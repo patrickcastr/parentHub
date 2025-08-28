@@ -1,0 +1,19 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f4f4f4;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+nav {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: #ffffff;
+  border-bottom: 1px solid #eaeaea;
+}
+main {
+  padding: 1rem;
+}
