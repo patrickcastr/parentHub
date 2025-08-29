@@ -1,0 +1,43 @@
+// Prisma schema for Study Groups
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model StudyGroup {
+  id        Int      @id @default(autoincrement())
+  groupID   String   @unique
+  groupName String
+  endDate   DateTime?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  teacherId String?
+  members   GroupStudent[]
+}
+
+model Student {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  name      String
+  email     String   @unique
+  age       Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  groups    GroupStudent[]
+}
+
+model GroupStudent {
+  id           Int        @id @default(autoincrement())
+  studyGroup   StudyGroup @relation(fields: [studyGroupId], references: [id])
+  studyGroupId Int
+  student      Student    @relation(fields: [studentId], references: [id])
+  studentId    Int
+
+  @@unique([studyGroupId, studentId])
+}
