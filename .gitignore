@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+dist/
+.next/
+*.log
+*.cache
+package-lock.json
+pnpm-lock.yaml
+*.local
+env.local
+*.swp
