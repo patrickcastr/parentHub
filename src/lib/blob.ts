@@ -24,15 +24,12 @@ export async function uploadFile(
   await blockBlob.upload(content, content.length, { blobHTTPHeaders: { blobContentType: contentType } });
 }
 
-export function getSignedUrl(
-  containerName: string,
-  blobName: string,
-  expirySeconds: number
-): string {
+export function getSignedUrl(containerName: string, blobName: string, expirySeconds: number): string {
   const service = BlobServiceClient.fromConnectionString(connectionString);
   const accountName = service.accountName;
-  const credentialAny = service.credential as unknown as { accountKey?: string };
-  const key = credentialAny.accountKey || '';
+  // Narrow credential type
+  const cred = service.credential as unknown as { accountKey?: string };
+  const key = cred?.accountKey || '';
   const credential = new StorageSharedKeyCredential(accountName, key);
   const now = new Date();
   const expiresOn = new Date(now.getTime() + expirySeconds * 1000);

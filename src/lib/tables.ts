@@ -17,18 +17,13 @@ export async function upsertEntity<T extends { partitionKey: string; rowKey: str
   await client.upsertEntity(entity);
 }
 
-export async function getEntity<T>(
-  table: string,
-  partitionKey: string,
-  rowKey: string
-): Promise<T | null> {
+export async function getEntity<T>(table: string, partitionKey: string, rowKey: string): Promise<T | null> {
   const client = getTableClient(table);
   try {
     const entity = await client.getEntity(partitionKey, rowKey);
     return entity as unknown as T;
-  } catch (err) {
-    const e = err as { statusCode?: number };
-    if (e.statusCode === 404) {
+  } catch (err: unknown) {
+    if (typeof err === 'object' && err && 'statusCode' in err && (err as { statusCode?: number }).statusCode === 404) {
       return null;
     }
     throw err;
