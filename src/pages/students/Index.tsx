@@ -1,0 +1,1 @@
+export default function StudentsIndex() { return <section>Students landing (coming soon)</section>; }

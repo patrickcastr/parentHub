@@ -1,0 +1,1 @@
+export default function TeacherStudents() { return <section>Coming soon…</section>; }

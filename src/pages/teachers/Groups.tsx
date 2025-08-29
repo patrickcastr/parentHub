@@ -1,0 +1,1 @@
+export default function Groups() { return <section>Coming soon…</section>; }
