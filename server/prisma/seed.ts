@@ -1,62 +1,23 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { prisma } from './client';
+import { buildGroupPrefix, ensureGroupFolder } from '../storage/storage-groups';
+import bcrypt from 'bcrypt';
 
 async function main() {
-  // Demo teacher
-  const teacherId = 'demo-teacher';
+  await prisma.group.deleteMany();
+  await prisma.student.deleteMany();
 
-  // Create groups
-  const group1 = await prisma.studyGroup.create({
-    data: {
-      groupID: '12345678',
-      groupName: 'Math Study',
-      endDate: new Date('2025-12-31'),
-      teacherId,
-    },
-  });
-  const group2 = await prisma.studyGroup.create({
-    data: {
-      groupID: '87654321',
-      groupName: 'Science Study',
-      endDate: new Date('2025-11-30'),
-      teacherId,
-    },
-  });
+  const mathId = 'seed-math-'+Math.random().toString(36).slice(2,8);
+  const sciId = 'seed-sci-'+Math.random().toString(36).slice(2,8);
+  const mathPrefix = buildGroupPrefix(mathId);
+  const sciPrefix = buildGroupPrefix(sciId);
+  await ensureGroupFolder(mathPrefix);
+  await ensureGroupFolder(sciPrefix);
+  const math = await prisma.group.create({ data: { id: mathId, name: 'Math Study', storagePrefix: mathPrefix } });
+  const sci = await prisma.group.create({ data: { id: sciId, name: 'Science Study', storagePrefix: sciPrefix } });
 
-  // Create students
-  const student1 = await prisma.student.create({
-    data: {
-      username: 'alice',
-      name: 'Alice Smith',
-      email: 'alice@example.com',
-      age: 15,
-    },
-  });
-  const student2 = await prisma.student.create({
-    data: {
-      username: 'bob',
-      name: 'Bob Lee',
-      email: 'bob@example.com',
-      age: 16,
-    },
-  });
-
-  // Attach students to groups
-  await prisma.groupStudent.create({
-    data: {
-      studyGroupId: group1.id,
-      studentId: student1.id,
-    },
-  });
-  await prisma.groupStudent.create({
-    data: {
-      studyGroupId: group2.id,
-      studentId: student2.id,
-    },
-  });
+  const pass = await bcrypt.hash('Password123!', 12);
+  await prisma.student.create({ data: { firstName: 'Alice', lastName: 'Smith', username: 'alice', email: 'alice@example.com', passwordHash: pass, age: 15, groupId: math.id } });
+  await prisma.student.create({ data: { firstName: 'Bob', lastName: 'Lee', username: 'bob', email: 'bob@example.com', passwordHash: pass, age: 16, groupId: sci.id } });
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-}).finally(() => prisma.$disconnect());
+main().catch(e => { console.error(e); process.exit(1); }).finally(()=> prisma.$disconnect());

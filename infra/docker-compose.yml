@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: parenthub_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parenthub
+      POSTGRES_PASSWORD: parenthub
+      POSTGRES_DB: parenthub
+    ports:
+      - "5432:5432"        # expose to host; remove if you only want local network
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: parenthub_pgadmin
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+
+volumes:
+  pg_data:

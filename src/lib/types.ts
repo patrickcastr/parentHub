@@ -1,22 +1,36 @@
-export type StudyGroup = {
-  id: number;
-  groupID: string;
-  groupName: string;
-  endDate?: string | null;
-  isActive: boolean;
-  teacherId?: string | null;
+export type Group = {
+  id: string;
+  name: string;
+  startsOn?: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type Student = {
-  id: number;
+export type GroupWithCount = Group & { memberCount: number };
+
+export type StudentDTO = {
+  id: string;
+  firstName: string;
+  lastName: string;
   username: string;
-  name: string;
   email: string;
   age?: number | null;
+  groupId?: string | null;
+  groupName?: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type GroupWithStudents = StudyGroup & { students: Student[] };
+export type Paginated<T> = { items: T[]; total: number };
+
+export type FileDTO = {
+  id: string;
+  groupId: string;
+  name: string;
+  url: string;
+  size: number;
+  contentType: string;
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
+};

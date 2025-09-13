@@ -8,4 +8,7 @@ package-lock.json
 pnpm-lock.yaml
 *.local
 env.local
+*.env
+server/.env
+.env
 *.swp

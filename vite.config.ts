@@ -4,9 +4,22 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src')
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5180',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:5180',
+        changeOrigin: true,
+        secure: false,
+      }
     }
+  },
+  resolve: {
+    alias: { '@': path.resolve(__dirname, 'src') }
   }
 });

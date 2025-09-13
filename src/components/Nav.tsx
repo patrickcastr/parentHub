@@ -1,31 +1,30 @@
 "use client";
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 export default function Nav() {
-  const [role, setRole] = useState<'teacher' | 'student' | null>(null);
+  const [role, setRole] = useState<'TEACHER' | 'STUDENT' | null>(null);
   useEffect(() => {
     const r = typeof window !== 'undefined' ? localStorage.getItem('role') : null;
-    if (r === 'teacher' || r === 'student') {
-      setRole(r);
+    if (r === 'TEACHER' || r === 'STUDENT') {
+      setRole(r as 'TEACHER' | 'STUDENT');
     }
   }, []);
   return (
     <nav>
       {role === null && (
         <>
-          <Link href="/">Home</Link>
-          <Link href="/teachers">Teachers</Link>
-          <Link href="/students">Students</Link>
-          <Link href="/login">Sign in</Link>
-          <Link href="/register">Register</Link>
+          <a href="/">Home</a>
+          <a href="/teachers">Teachers</a>
+          <a href="/students">Students</a>
+          <a href="/login">Sign in</a>
+          <a href="/register">Register</a>
         </>
       )}
-      {role === 'teacher' && (
+      {role === 'TEACHER' && (
         <>
-          <Link href="/admin">Admin</Link>
-          <Link
+          <a href="/teachers">Teachers</a>
+          <a
             href="#"
             onClick={() => {
               fetch('/api/auth/signout').then(() => {
@@ -35,13 +34,13 @@ export default function Nav() {
             }}
           >
             Sign out
-          </Link>
+          </a>
         </>
       )}
-      {role === 'student' && (
+      {role === 'STUDENT' && (
         <>
-          <Link href="/portal">Group</Link>
-          <Link
+          <a href="/students">Students</a>
+          <a
             href="#"
             onClick={() => {
               fetch('/api/auth/signout').then(() => {
@@ -51,7 +50,7 @@ export default function Nav() {
             }}
           >
             Sign out
-          </Link>
+          </a>
         </>
       )}
     </nav>

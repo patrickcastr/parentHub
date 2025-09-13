@@ -72,3 +72,20 @@ curl -X POST http://localhost:5174/api/groups/12345678/import -F "file=@students
 - `isActive` auto-toggles false if `endDate` < today when listing groups.
 - Backup: copy `server/prisma/dev.db` for local backup/restore.
 - Future: migrate to Postgres, add authentication, row-level security.
+
+## Environment
+
+Set these in your .env:
+
+- DATABASE_URL=postgresql://...
+- AZURE_STORAGE_ACCOUNT=youraccount
+- AZURE_STORAGE_CONTAINER=parenthub-dev
+- AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+- AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+- AZURE_CLIENT_SECRET=your-app-secret
+- FILE_SAS_TTL_MINUTES=15
+- AUTH_BYPASS=1 (optional; skips AAD auth for /api/me in dev)
+- ALLOW_DEV_PASSWORD=1 (optional; enables POST /api/auth/login dev credential with password 'devpass')
+- DEV_LOGIN_HASH= (optional bcrypt hash to allow a private password instead of 'devpass')
+
+Ensure your Azure Blob CORS allows the app origin in dev for PUT/GET with SAS.

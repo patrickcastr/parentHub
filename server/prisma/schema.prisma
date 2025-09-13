@@ -1,43 +1,98 @@
-// Prisma schema for Study Groups
-
-datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-model StudyGroup {
-  id        Int      @id @default(autoincrement())
-  groupID   String   @unique
-  groupName String
-  endDate   DateTime?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  teacherId String?
-  members   GroupStudent[]
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+}
+
+model Group {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String?   @db.VarChar(50)
+  startsOn      DateTime? @db.Timestamptz(6) // startDate
+  endsOn        DateTime? @db.Timestamptz(6) // endDate (canonical)
+  storagePrefix String    @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  files         File[]
+  students      Student[]
+
+  @@index([name])
+  @@index([slug])
+  @@index([startsOn])
+  @@index([endsOn])
 }
 
 model Student {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  name      String
-  email     String   @unique
-  age       Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  groups    GroupStudent[]
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  age          Int?
+  groupId      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  group        Group?   @relation(fields: [groupId], references: [id])
+
+  @@index([groupId])
 }
 
-model GroupStudent {
-  id           Int        @id @default(autoincrement())
-  studyGroup   StudyGroup @relation(fields: [studyGroupId], references: [id])
-  studyGroupId Int
-  student      Student    @relation(fields: [studentId], references: [id])
-  studentId    Int
+model File {
+  id         String     @id @default(cuid())
+  name       String
+  url        String // storage URL or opaque key
+  key        String // provider-specific object key/path
+  mimeType   String?
+  sizeBytes  Int?
+  uploadedBy String?
+  createdAt  DateTime   @default(now())
+  status     FileStatus @default(ACTIVE)
+  archivedAt DateTime?
+  archivedBy String?
+  group      Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId    String
 
-  @@unique([studyGroupId, studentId])
+  accessLogs FileAccessLog[]
+
+  @@index([groupId, createdAt])
+  @@index([status, groupId])
+  @@index([key])
+}
+
+enum FileStatus {
+  ACTIVE
+  ARCHIVED
+  PURGED
+}
+
+model FileAccessLog {
+  id        String   @id @default(cuid())
+  fileId    String
+  actorId   String?
+  action    String // "upload" | "download" | "archive" | "purge"
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId, createdAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  role         Role
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

@@ -1,0 +1,2 @@
+-- Prisma will handle enum + columns creation automatically based on schema.prisma for FileStatus and new File columns.
+-- This migration is intentionally empty because the schema change is fully described in schema.prisma and previous attempt had custom SQL causing shadow DB error.

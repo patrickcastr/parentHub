@@ -1,11 +1,13 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { ToastHost } from '@/components/common/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 
 export default function TeacherAdmin() {
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 relative">
+      <ToastHost />
       <Card>
         <CardHeader>
           <CardTitle>Create Teacher Group</CardTitle>
