@@ -30,6 +30,23 @@ import { URL } from 'url';
 export const app = express();
 // Trust reverse proxy (needed when deploying behind ingress for correct secure/samesite decisions)
 app.set('trust proxy', 1);
+// One-line masked Microsoft auth env summary (startup)
+{
+  const mask = (v: string) => (v ? `${v.slice(0,6)}…${v.slice(-4)}` : '');
+  /* eslint-disable no-console */
+  console.log('[AUTH] env:', {
+    msEnabledFlag: (process.env.AUTH_MS_ENABLED ?? '1') !== '0',
+    hasTenant: !!process.env.AZURE_TENANT_ID,
+    hasClient: !!process.env.AZURE_CLIENT_ID,
+    hasSecret: !!process.env.AZURE_CLIENT_SECRET,
+    hasRedirect: !!process.env.AZURE_REDIRECT_URI,
+    tenant: mask(process.env.AZURE_TENANT_ID || ''),
+    client: mask(process.env.AZURE_CLIENT_ID || ''),
+    redirect: process.env.AZURE_REDIRECT_URI || '',
+    nodeEnv: process.env.NODE_ENV || 'development',
+  });
+  /* eslint-enable no-console */
+}
 // CORS (strict allow-list) BEFORE any routes
 const CLIENT_ORIGIN = process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173';
 const extraOrigins = [CLIENT_ORIGIN, CLIENT_ORIGIN.replace('localhost','127.0.0.1')];

@@ -18,7 +18,7 @@ function normalizeRole(input: any): 'STUDENT' | 'TEACHER' {
 const router = Router();
 
 // Minimal in-memory session store (dev only). Replace with Redis/DB in prod.
-const SESS: Map<string, { id: string; email: string; role: 'STUDENT' | 'TEACHER' }> = (global as any).__SESS || new Map();
+const SESS: Map<string, { id: string; email: string; role: string }> = (global as any).__SESS || new Map();
 if (!(global as any).__SESS) (global as any).__SESS = SESS;
 
 function issueSession(res: any, user: { id: string; email: string; role: 'STUDENT' | 'TEACHER' }, remember: boolean | number = false) {
@@ -40,6 +40,40 @@ function requireSSOEnv() {
     return null;
   }
   return { AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_REDIRECT_URI, CLIENT_APP_ORIGIN } as const;
+}
+
+// Diagnostic helper summarizing Microsoft SSO env presence (masked)
+function msEnvStatus() {
+  const tenant   = process.env.AZURE_TENANT_ID ?? '';
+  const client   = process.env.AZURE_CLIENT_ID ?? '';
+  const secret   = process.env.AZURE_CLIENT_SECRET ?? '';
+  const redirect = process.env.AZURE_REDIRECT_URI ?? '';
+  const mask = (v: string) => (v ? `${v.slice(0,6)}…${v.slice(-4)}` : '');
+  const msEnabledFlag = (process.env.AUTH_MS_ENABLED ?? '1') !== '0';
+  const hasTenant = !!tenant;
+  const hasClient = !!client;
+  const hasSecret = !!secret;
+  const hasRedirect = !!redirect;
+  const allPresent = msEnabledFlag && hasTenant && hasClient && hasSecret && hasRedirect;
+  return {
+    msEnabledFlag,
+    hasTenant,
+    hasClient,
+    hasSecret,
+    hasRedirect,
+    allPresent,
+  tenant,
+  client,
+  secret,
+  redirect,
+    preview: {
+      tenant: mask(tenant),
+      client: mask(client),
+      secret: secret ? '***redacted***' : '',
+      redirect,
+    },
+    nodeEnv: process.env.NODE_ENV || 'development',
+  };
 }
 
 router.post('/login', async (req, res) => {
@@ -115,40 +149,32 @@ router.post('/logout', (req, res) => {
 
 // Dev diagnostic route for SSO config (redacted)
 router.get('/config', (_req, res) => {
-  const env = requireSSOEnv();
-  const envEnabled = process.env.AUTH_MS_ENABLED !== '0';
-  const msEnabled = !!env && envEnabled;
-  res.json({ msEnabled, loginUrl: '/api/auth/login/microsoft' });
+  const st = msEnvStatus();
+  res.json({ msEnabled: st.allPresent, loginUrl: '/api/auth/login/microsoft' });
+});
+
+// TEMP diagnostic: which envs does the API see?
+router.get('/config/_diag', (_req, res) => {
+  res.json(msEnvStatus());
 });
 
 // GET /api/auth/login/microsoft
+// Uses same env validation as /api/auth/config; returns 500 with stable error when incomplete.
 router.get('/login/microsoft', (req, res) => {
-  const env = requireSSOEnv();
-  if (!env) {
-    const wantsJson = req.accepts(['json','html']) === 'json';
-  if (wantsJson) return res.status(500).json({ error: 'sso_config_missing' });
-  const origin = process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173';
-  return res.redirect(origin.replace(/\/$/,'') + '/login?error=sso_config');
-  }
-  const next = (req.query.next as string) || '';
-  const state = crypto.randomBytes(16).toString('hex');
-  // PKCE code verifier & challenge (S256)
-  const codeVerifier = crypto.randomBytes(32).toString('base64url');
-  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-  const payload = JSON.stringify({ state, next: next || null, ts: Date.now(), codeVerifier });
-  const sig = crypto.createHmac('sha256', env.AZURE_CLIENT_SECRET).update(payload).digest('hex');
-  res.cookie('ph.ms.state', Buffer.from(payload).toString('base64') + '.' + sig, { httpOnly: true, sameSite: 'lax', secure: false, path: '/', maxAge: 5 * 60 * 1000 });
-  const authUrl = new URL(`https://login.microsoftonline.com/${env.AZURE_TENANT_ID}/oauth2/v2.0/authorize`);
-  authUrl.searchParams.set('client_id', env.AZURE_CLIENT_ID);
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('redirect_uri', env.AZURE_REDIRECT_URI);
-  authUrl.searchParams.set('response_mode', 'query');
-  authUrl.searchParams.set('scope', 'openid profile email offline_access');
-  authUrl.searchParams.set('code_challenge_method', 'S256');
-  authUrl.searchParams.set('code_challenge', codeChallenge);
-  authUrl.searchParams.set('state', state);
-  console.log('[SSO] start ->', authUrl.toString());
-  return res.redirect(authUrl.toString());
+  const st = msEnvStatus();
+  if (!st.allPresent) return res.status(500).json({ error: 'sso_config_missing' });
+  // Non-PKCE confidential client authorization request (no code_challenge)
+  const auth = new URL(`https://login.microsoftonline.com/${st.tenant}/oauth2/v2.0/authorize`);
+  auth.searchParams.set('client_id', st.client);
+  auth.searchParams.set('response_type', 'code');
+  auth.searchParams.set('response_mode', 'query');
+  auth.searchParams.set('redirect_uri', st.redirect);
+  auth.searchParams.set('scope', 'openid profile email offline_access');
+  // Optional state (not enforced in callback for now)
+  const state = crypto.randomBytes(8).toString('hex');
+  auth.searchParams.set('state', state);
+  console.log('[SSO] start (no PKCE) ->', auth.toString());
+  return res.redirect(auth.toString());
 });
 
 async function fetchToken(env: ReturnType<typeof requireSSOEnv>, code: string, codeVerifier?: string) {
@@ -239,6 +265,68 @@ router.get('/callback/microsoft', async (req, res) => {
     console.error('[SSO] callback error', e);
     const origin = (env && env.CLIENT_APP_ORIGIN) || 'http://localhost:5173';
     return res.redirect(origin + '/login?error=sso_failed');
+  }
+});
+
+// Helper to create a session cookie for SSO (lowercase role per spec for SSO path only)
+function setCookieSession(res: any, payload: { email: string; name: string; role: string }, provider: string){
+  const sid = 's_' + crypto.randomBytes(12).toString('hex');
+  SESS.set(sid, { id: sid, email: payload.email, role: payload.role });
+  res.cookie('ph.sid', sid, {
+    httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 7*24*60*60*1000,
+  });
+  return sid;
+}
+
+// NEW non-PKCE Azure callback
+router.get('/azure/callback', async (req, res) => {
+  console.log('[AUTH] azure/callback hit', { hasCode: !!req.query.code });
+  try {
+    const code = String(req.query.code || '');
+    if(!code) return res.status(400).json({ error: 'missing_code' });
+    const tenant = process.env.AZURE_TENANT_ID;
+    const client = process.env.AZURE_CLIENT_ID;
+    const secret = process.env.AZURE_CLIENT_SECRET;
+    const redirect = process.env.AZURE_REDIRECT_URI;
+    if(!tenant || !client || !secret || !redirect){
+      return res.status(500).json({ error: 'sso_config_missing' });
+    }
+    const tokenUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
+    const body = new URLSearchParams({
+      client_id: client,
+      client_secret: secret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirect,
+      scope: 'openid profile email offline_access'
+    });
+    const t = await fetch(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    if(!t.ok){
+      const errTxt = await t.text().catch(()=> '');
+      console.error('[AUTH] token exchange failed', t.status, errTxt);
+      return res.status(401).json({ error: 'token_exchange_failed' });
+    }
+    const tokens: any = await t.json();
+    const idToken = tokens.id_token || '';
+    const parts = idToken.split('.');
+    if(parts.length < 2) return res.status(401).json({ error: 'bad_id_token' });
+    const payloadJson = Buffer.from(parts[1].replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8');
+    let claims: any = {}; try { claims = JSON.parse(payloadJson); } catch {}
+    const email = String((claims.email || claims.preferred_username || '')).toLowerCase();
+    const name = String(claims.name || email || 'User');
+    if(!email) return res.status(401).json({ error: 'no_email_claim' });
+    // Determine canonical role (student present => student else teacher)
+    const student = await prisma.student.findUnique({ where: { email } }).catch(()=>null);
+    const canonical = student ? 'student' : 'teacher';
+    setCookieSession(res, { email, name, role: canonical }, 'ms');
+    return res.redirect(process.env.POST_LOGIN_REDIRECT || 'http://localhost:5173/');
+  } catch (e:any){
+    console.error('[AUTH] callback error', e);
+    return res.status(500).json({ error: 'callback_error' });
   }
 });
 

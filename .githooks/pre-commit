@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Block env files being committed
+echo "[pre-commit] scanning for .env files & secrets" >&2
+if git diff --cached --name-only | grep -E '\.env($|\.|/)' >/dev/null; then
+  echo '❌ Abort: .env files detected in commit. Remove them from the index.' >&2
+  git diff --cached --name-only | grep -E '\.env($|\.|/)' >&2 || true
+  exit 1
+fi
+
+# Naive secret scan
+if git diff --cached | grep -E 'AZURE_CLIENT_SECRET=|CLIENT_SECRET=|password=|passwd=|secret=' >/dev/null; then
+  # Allow known placeholder patterns
+  if git diff --cached | grep -E 'AZURE_CLIENT_SECRET=<' >/dev/null || \
+     git diff --cached | grep -E 'AZURE_CLIENT_SECRET=(prod-secret|your-client-secret)' >/dev/null; then
+    echo '[pre-commit] placeholder secret strings detected (allowed)' >&2
+  else
+    echo '❌ Abort: possible secret material detected in staged changes.' >&2
+    exit 1
+  fi
+fi
+
+echo '[pre-commit] OK' >&2
