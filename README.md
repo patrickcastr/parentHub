@@ -1,48 +1,84 @@
-# Parent Hub v3
+# Parent Hub
 
-This project provides a skeleton implementation of the "Parent Hub" portal described in Patrick's ideas. It uses **Next.js 14** with the **app router** and TypeScript.  It is designed to run server‑side in a Node.js environment and integrates with Azure services for persistent storage.
+Unified portal for teachers & students: study group management, secure file distribution, and SSO / email-based authentication. Backend (Express + Prisma + Postgres) lives in `server/`; frontend (React + Vite) in `src/` (future separation into `web/`).
 
-## Features
+## High-Level Architecture
+| Layer | Tech | Responsibility |
+|-------|------|----------------|
+| Frontend | React + Vite (TS) | UI, auth state, API calls with cookies |
+| Backend API | Express (TS) | Auth, groups, students, files, audit logging |
+| Database | PostgreSQL via Prisma | Core relational data |
+| Object Storage | Azure Blob | File objects (SAS signed) |
+| Email | SMTP | OTP + notifications |
+| Sessions / OTP (dev) | In-memory | Replace with Redis in prod |
 
-* **Email‑based OTP authentication** for parents/students (no Microsoft login required).  Verification codes are stored in Azure Table Storage and sent via SMTP.
-* **Optional Single Sign On** for teachers via Azure AD (NextAuth).
-* **Role‑aware navigation**: Teachers and Students each see relevant sections; teachers access group & student management, students see their portal.
-* **Teacher console**:
-  * Create and manage groups (with start dates).
-  * Add or import students (CSV) and assign/unassign groups (with future start date override).
-  * Upload files to Azure Blob Storage under a group folder.
-  * View student directory and group memberships.
-* **Student portal** to list assigned groups and download files.  All file downloads are signed with a short‑lived SAS token and recorded in an audit log.
-* Lightweight **rate limiting and CAPTCHA** for OTP requests to mitigate abuse.
-* A **daily cleanup endpoint** to disable expired memberships and purge groups past their expiry.
+## Feature Summary
+* Email OTP auth + Azure Entra (AD) SSO (teacher role) with role-aware nav.
+* Group & student CRUD, CSV import, future-dated membership handling.
+* File upload/download with SAS + access logging.
+* Rate limiting + CAPTCHA (hCaptcha) for OTP endpoints.
+* Diagnostics endpoints for SSO env visibility.
 
-## Running locally
-
-1. Install dependencies:
-
+## Quickstart
 ```bash
+git clone <repo>
+cd parentHub
 npm install
+cd server && npm install && cp ../.env.example .env  # fill values
+npx prisma migrate dev --name init || true
+npm run dev        # API :5180
+cd .. && npm run dev  # Frontend (Vite) :5173
+```
+Visit: http://localhost:5173/
+
+## Deployment Matrix (Examples)
+| Concern | Dev / Simple | Hardened / Prod |
+|---------|--------------|-----------------|
+| API | Cloud Run / Fly.io | Azure Container Apps / AKS |
+| DB | Neon / Supabase | Azure Postgres Flexible Server |
+| Sessions | In-memory | Redis / Azure Cache |
+| OTP Store | In-memory | Table Storage / Redis |
+| Files | Azure Blob | Blob + lifecycle rules |
+| CDN | None | Cloudflare / Front Door |
+
+## Docs Index
+| Path | Purpose |
+|------|---------|
+| `README.md` | Overview & onboarding |
+| `server/README.md` | Backend routes, env & deploy |
+| `web/README.md` | Frontend env & build (placeholder) |
+| `docs/sso-azure-setup.md` | Detailed SSO setup guide |
+
+## Environment (Minimal Core)
+```
+DATABASE_URL=postgresql://...
+AZURE_STORAGE_CONNECTION_STRING=...
+SMTP_HOST=...
+SMTP_USER=...
+SMTP_PASS=...
+AZURE_TENANT_ID=...
+AZURE_CLIENT_ID=...
+AZURE_CLIENT_SECRET=...
+AZURE_REDIRECT_URI=http://localhost:5180/api/auth/azure/callback
+POST_LOGIN_REDIRECT=http://localhost:5173/
+AUTH_MS_ENABLED=1
+BCRYPT_SALT_ROUNDS=12
 ```
 
-2. Copy `.env.example` to `.env` and fill in the values for your Azure Storage account, SMTP provider, Azure AD app (for teacher SSO) and CAPTCHA provider if using one.
+## Workflows
+* Build backend: `cd server && npm run build`
+* Run smoke password hash: `npm run smoke:hash` (server)
+* SSO env check: `curl http://localhost:5180/api/auth/config`
 
-3. Run the development server:
+## Roadmap (Abbrev)
+* Redis session/OTP store; structured logging; object lifecycle purge.
+* Multi-tenant boundary (teacher org isolation) & RBAC refinements.
+* Optional file antivirus scan integration.
 
-```bash
-npm run dev
-```
+---
+Below: quick SSO reference (see dedicated doc for details).
 
-4. Open <http://localhost:3000> in your browser.
-
-## Deployment
-
-This app can be deployed to Azure Static Web Apps, Vercel, Cloudflare Pages or any platform supporting Next.js 14 with the **app** directory.  You must provide environment variables at build and runtime.
-
-## Notes
-
-This repository contains **skeleton** implementations of the API routes and pages.  The core integration points for Azure Table Storage, Azure Blob Storage, email delivery and SSO are provided as examples.  You will need to adjust the code to suit your specific requirements and handle edge‑cases (error handling, validation, etc.).  Sensitive keys should **never** be committed to the repository.
-
-## Microsoft Entra ID (Azure AD) SSO
+## Microsoft Entra ID (Azure AD) SSO (Quick Reference)
 
 Full, living setup guide: [docs/sso-azure-setup.md](./docs/sso-azure-setup.md)
 
@@ -55,7 +91,7 @@ CLIENT_APP_ORIGIN=http://localhost:5173
 VITE_API_URL=http://localhost:5180
 AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CLIENT_SECRET=your-client-secret
+AZURE_CLIENT_SECRET=<client-secret>
 AZURE_REDIRECT_URI=http://localhost:5180/api/auth/azure/callback
 POST_LOGIN_REDIRECT=http://localhost:5173/
 
@@ -65,7 +101,7 @@ CLIENT_APP_ORIGIN=https://app.parenthub.nz
 VITE_API_URL=https://api.parenthub.nz
 AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CLIENT_SECRET=prod-secret
+AZURE_CLIENT_SECRET=<prod-client-secret>
 AZURE_REDIRECT_URI=https://api.parenthub.nz/api/auth/azure/callback
 POST_LOGIN_REDIRECT=https://app.parenthub.nz/
 ```
@@ -93,8 +129,9 @@ Notes:
 | No `ph.sid` cookie | Redirect mismatch or cookie flags | Ensure callback path matches Azure; dev uses non-secure cookie |
 | Role casing surprise | Different auth source | Working as designed (see guide) |
 
-## Future Hardening
-* Replace in-memory session store with Redis for horizontal scaling.
-* Rotate and hash session IDs server-side.
-* Add nonce validation for ID token; currently minimal validation for dev.
-* Enforce role provisioning (teachers vs students) centrally.
+## Future Hardening (Security Focus)
+* Redis or KeyDB for session + OTP store.
+* Session ID hashing & rotation.
+* Nonce + state strict enforcement for SSO.
+* Fine-grained audit logging & retention policies.
+* Automate stale file purging & archival.

@@ -1,91 +1,119 @@
-# GreenSchool Student Hub Database
+# Server (Backend API)
 
-## Overview
+Express + TypeScript API powering authentication, groups, students, and file metadata / access logging. Uses Prisma + PostgreSQL.
 
-This app uses SQLite via Prisma ORM. The core entities are StudyGroup, Student, and GroupStudent (join table).
+## Stack
+| Area | Tech |
+|------|------|
+| Runtime | Node 20 |
+| Framework | Express 4 + custom routers |
+| ORM | Prisma Client |
+| DB | PostgreSQL (any compatible host) |
+| Auth | Email OTP + Azure Entra ID (confidential flow) |
+| Sessions | In-memory map (cookie `ph.sid`) |
+| Hashing | bcryptjs (SALT_ROUNDS env) |
+| File Storage | Azure Blob (SAS signed URLs) |
 
-### Entity Relationship Diagram (ERD)
+## Directory Pointers
+| Path | Description |
+|------|-------------|
+| `app.ts` | Express app bootstrap (CORS, routes, diagnostics) |
+| `api/auth.ts` | Auth & SSO endpoints, session issuance |
+| `api/students.ts` | Student CRUD, password changes, CSV import |
+| `prisma/schema.prisma` | Data models (Group, Student, File, etc.) |
+| `prisma/seed*.ts` | Seed scripts (students, auth users) |
 
-- StudyGroup (1) — (M) GroupStudent (M) — (1) Student
+## Key Models (Prisma)
+| Model | Highlights |
+|-------|-----------|
+| `User` | `email`, `role` (STUDENT/TEACHER), optional `passwordHash` |
+| `Group` | `name`, `slug?`, `startsOn/endsOn`, `storagePrefix` unique |
+| `Student` | `firstName/lastName`, `username`, `email`, `groupId?` |
+| `File` | `key`, `url`, `status`, `groupId`, soft archive fields |
+| `FileAccessLog` | `fileId`, `action`, `ip`, `userAgent` |
 
-## Schema
+See schema for indexes & relations.
 
-See `prisma/schema.prisma` for full model definitions.
+## Auth Endpoints (Selected)
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/auth/login` | Dev/email password login (guarded by flags) |
+| GET | `/api/auth/login/microsoft` | Redirect to Azure authorize (confidential) |
+| GET | `/api/auth/azure/callback` | Handle code, exchange token, set session |
+| GET | `/api/auth/config` | Public SSO enable + login URL |
+| GET | `/api/auth/me` | Current user / session status |
 
-- **StudyGroup**: id, groupID (unique), groupName, endDate, isActive, createdAt, updatedAt, teacherId (optional)
-- **Student**: id, username (unique), name, email (unique), age, createdAt, updatedAt
-- **GroupStudent**: id, studyGroupId, studentId (unique per group/student)
+## Student & Group (Representative)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/students` | List/search students |
+| POST | `/api/students` | Create student (hash password) |
+| PATCH | `/api/students/:id` | Update profile / rotate password |
+| POST | `/api/groups` | Create group |
+| GET | `/api/groups` | List groups |
 
-## Migrations
+## Environment Variables (Core)
+| Var | Purpose |
+|-----|---------|
+| `DATABASE_URL` | Postgres connection string |
+| `AZURE_STORAGE_CONNECTION_STRING` | Blob access (uploads & SAS) |
+| `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Entra ID confidential client (placeholder values only in docs) |
+| `AZURE_REDIRECT_URI` | Callback (e.g. http://localhost:5180/api/auth/azure/callback) |
+| `POST_LOGIN_REDIRECT` | Where frontend should land after auth |
+| `AUTH_MS_ENABLED` | Toggle SSO button/config |
+| `ALLOW_DEV_PASSWORD` | Enables dev password login route |
+| `DEV_LOGIN_HASH` | Optional bcryptjs hash overriding static dev pass |
+| `BCRYPT_SALT_ROUNDS` | Hashing cost factor (default 12) |
 
-```bash
-npx prisma migrate dev --name init
-```
-
-## Seeding
-
-Add demo teacher and groups in a seed script (see `prisma/seed.ts`).
-
-## Local Setup
-
+## Local Development
 ```bash
 cd server
-npm i
-npx prisma generate
+npm install
+cp ../.env.example .env  # fill values
+npx prisma migrate dev --name init
 npm run dev
 ```
+API default port: 5180 (adjust via `PORT` env for production).
 
-## API Endpoints
-
-Base URL: `http://localhost:5174/api`
-
-| Method | Endpoint                        | Description                                 |
-|--------|----------------------------------|---------------------------------------------|
-| POST   | /api/groups                     | Create study group                          |
-| GET    | /api/groups?teacherId=...       | List groups for teacher                     |
-| GET    | /api/groups/:groupID            | Get group details + students                |
-| PATCH  | /api/groups/:groupID            | Update group                                |
-| DELETE | /api/groups/:groupID            | Delete group                                |
-| GET    | /api/students?search=...        | Search students                             |
-| POST   | /api/students                   | Create student                              |
-| POST   | /api/groups/:groupID/students   | Add student to group                        |
-| POST   | /api/groups/:groupID/import     | Import students via CSV                     |
-| DELETE | /api/groups/:groupID/students/:studentId | Remove student from group         |
-
-## Sample curl
-
+## Build & Run (Prod Image Pattern)
+Dockerfile uses multi-stage (deps → build → runtime) on `node:20-alpine`.
 ```bash
-# Create group
-curl -X POST http://localhost:5174/api/groups -H "Content-Type: application/json" -d '{"groupName":"Math Study","endDate":"2025-12-31"}'
-
-# List groups
-curl http://localhost:5174/api/groups?teacherId=demo-teacher
-
-# Import students CSV
-curl -X POST http://localhost:5174/api/groups/12345678/import -F "file=@students.csv"
+docker build -t parenthub-api .
+docker run -p 5180:8080 --env-file .env parenthub-api
 ```
 
-## Notes
+At start the container applies `prisma migrate deploy` then serves `dist/app.js`.
 
-- Table name is `study_groups` (not `group`, which is reserved in SQL).
-- `groupID` is a random 6–8 digit string, unique per group.
-- `isActive` auto-toggles false if `endDate` < today when listing groups.
-- Backup: copy `server/prisma/dev.db` for local backup/restore.
-- Future: migrate to Postgres, add authentication, row-level security.
+## Seeding
+```bash
+npm run seed           # general seed
+npm run seed:students  # sample students
+npm run seed:auth-users
+```
 
-## Environment
+## Password Hashing
+Uses `bcryptjs` (pure JS) for portability on Alpine. Cost factor tunable with `BCRYPT_SALT_ROUNDS` (12 recommended baseline).
 
-Set these in your .env:
+## Security Notes
+* Session IDs currently stored in-memory (single instance). For multi-instance, externalize to Redis.
+* Add a nonce & state validation on SSO callback for production (baseline present but can be hardened further).
+* Consider output encoding & strict CSP headers once frontend is static hosted.
 
-- DATABASE_URL=postgresql://...
-- AZURE_STORAGE_ACCOUNT=youraccount
-- AZURE_STORAGE_CONTAINER=parenthub-dev
-- AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-- AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-- AZURE_CLIENT_SECRET=your-app-secret
-- FILE_SAS_TTL_MINUTES=15
-- AUTH_BYPASS=1 (optional; skips AAD auth for /api/me in dev)
-- ALLOW_DEV_PASSWORD=1 (optional; enables POST /api/auth/login dev credential with password 'devpass')
-- DEV_LOGIN_HASH= (optional bcrypt hash to allow a private password instead of 'devpass')
+## Operational Hardening (Future)
+| Area | Next Step |
+|------|----------|
+| Sessions | Redis with TTL & rotation |
+| Audit | Structured logs + retention tasks |
+| Files | Malware scan & checksum record |
+| Secrets | Managed store (Azure Key Vault) |
+| Scaling | Horizontal pod autoscaling with shared session backend |
 
-Ensure your Azure Blob CORS allows the app origin in dev for PUT/GET with SAS.
+## Troubleshooting
+| Symptom | Likely Cause | Action |
+|---------|--------------|--------|
+| 401 after SSO | Missing cookie or session lost | Inspect `Set-Cookie`, ensure sameSite setting |
+| 500 on login redirect | Env vars incomplete | Hit `/api/auth/config/_diag` |
+| Slow hashing | Very high rounds | Lower `BCRYPT_SALT_ROUNDS` in dev |
+
+---
+For SSO specifics see root `docs/sso-azure-setup.md`.
