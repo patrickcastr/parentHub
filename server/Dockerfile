@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 ENV PORT=8080
 COPY --from=builder /app ./
 # run migrations on start (optional but handy) ugh
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/app.js"]
