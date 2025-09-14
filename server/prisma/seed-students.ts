@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
+const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
 import 'dotenv/config';
 
 /**
@@ -41,7 +42,7 @@ async function main(){
 
   // Pre-compute password hash (same for all demo users)
   const rawPassword = 'Password123!';
-  const passwordHash = bcrypt.hashSync(rawPassword, 10);
+  const passwordHash = bcrypt.hashSync(rawPassword, SALT_ROUNDS);
 
   let created = 0; let updated = 0;
 

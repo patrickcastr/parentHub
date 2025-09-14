@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../prisma/client';
 import crypto from 'crypto';
 
@@ -104,7 +104,7 @@ router.post('/login', async (req, res) => {
       // Optional private hash path
       const hash = process.env.DEV_LOGIN_HASH;
       if (hash) {
-        const good = await bcrypt.compare(password, hash).catch(() => false);
+  const good = await bcrypt.compare(password, hash).catch(() => false);
         if (good) {
           const maxAgeSec = remember ? 30 * 24 * 3600 : 3600;
           res.cookie('ph.sid', 'dev-session', {
@@ -125,7 +125,7 @@ router.post('/login', async (req, res) => {
       if(!user || !user.passwordHash){
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      const ok = await bcrypt.compare(password, user.passwordHash).catch(()=> false);
+  const ok = await bcrypt.compare(password, user.passwordHash).catch(()=> false);
       if(!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const role = normalizeRole(user.role || 'STUDENT');
   issueSession(res, { id: user.id, email: user.email, role }, !!remember);

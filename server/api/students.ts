@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
+const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS ?? 12);
 import { prisma } from '../prisma/client';
 import multer from 'multer';
 import { assertGroupActive } from './groups';
@@ -74,7 +75,7 @@ studentsRouter.post('/', async (req, res) => {
   const parsed = createStudentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
   const data = parsed.data;
-  const passwordHash = await bcrypt.hash(data.passwordPlaintext, 12);
+  const passwordHash = await bcrypt.hash(data.passwordPlaintext, SALT_ROUNDS);
   try {
   const created = await prisma.student.create({ data: { firstName: data.firstName, lastName: data.lastName, username: data.username, email: data.email, passwordHash, age: data.age, groupId: data.groupId } as any });
     res.status(201).json(created);
@@ -89,7 +90,7 @@ studentsRouter.patch('/:id', async (req, res) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
   const { newPasswordPlaintext, ...rest } = parsed.data;
   const data: any = { ...rest };
-  if (newPasswordPlaintext) data.passwordHash = await bcrypt.hash(newPasswordPlaintext, 12);
+  if (newPasswordPlaintext) data.passwordHash = await bcrypt.hash(newPasswordPlaintext, SALT_ROUNDS);
   try {
   const updated = await prisma.student.update({ where: { id: req.params.id as string }, data: data as any });
     res.json(updated);
@@ -185,7 +186,7 @@ studentsRouter.post('/import-csv', upload.single('file'), async (req, res) => {
       const ageStr = cols[idx('age')];
       const groupName = cols[idx('groupname')];
       if (!firstName || !lastName || !username || !email || !password) throw new Error('Missing required field');
-      const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
       let groupId: string | undefined = undefined;
       if (groupName) {
   const group = await (prisma as any).group.upsert({ where: { name: groupName }, update: {}, create: { name: groupName } });
