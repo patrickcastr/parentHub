@@ -2,7 +2,8 @@ import { app } from './app';
 import { initStorage } from './storage/azure-blob';
 import http from 'http';
 
-const port = Number(process.env.PORT ?? 8080);
+// Default to 5180 locally; Cloud Run / other hosts will supply PORT.
+const port = Number(process.env.PORT ?? 5180);
 app.listen(port, '0.0.0.0', async () => {
 	console.log(`🚀 Server running on port ${port}`);
 	try {
