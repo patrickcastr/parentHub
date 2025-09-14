@@ -54,6 +54,8 @@ app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true); // non-browser / same-origin
     if (extraOrigins.includes(origin)) return cb(null, true);
+    // Allow any Vite auto-bumped localhost:51xx port in dev
+    if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:51\d{2}$/.test(origin)) return cb(null, true);
     return cb(new Error('CORS blocked'), false);
   },
   credentials: true
