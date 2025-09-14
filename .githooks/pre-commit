@@ -4,9 +4,14 @@ set -euo pipefail
 # Block env files being committed
 echo "[pre-commit] scanning for .env files & secrets" >&2
 if git diff --cached --name-only | grep -E '\.env($|\.|/)' >/dev/null; then
-  echo '❌ Abort: .env files detected in commit. Remove them from the index.' >&2
-  git diff --cached --name-only | grep -E '\.env($|\.|/)' >&2 || true
-  exit 1
+  # Allow committing .env.example as documented reference
+  if git diff --cached --name-only | grep -E '^\.env.example$' >/dev/null; then
+    echo '[pre-commit] allowing .env.example' >&2
+  else
+    echo '❌ Abort: .env files detected in commit. Remove them from the index.' >&2
+    git diff --cached --name-only | grep -E '\.env($|\.|/)' >&2 || true
+    exit 1
+  fi
 fi
 
 # Naive secret scan
