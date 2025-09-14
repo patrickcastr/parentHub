@@ -4,7 +4,7 @@
   "description": "ParentHub backend API using Express, Prisma ORM, and PostgreSQL (via Neon in cloud).",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch . --ext ts --exec ts-node --project ../tsconfig.server.json app.ts",
+  "dev": "cross-env PORT=5180 nodemon --watch . --ext ts --exec ts-node --project ../tsconfig.server.json index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/app.js",
     "seed": "ts-node prisma/seed.ts",
@@ -49,6 +49,7 @@
     "nodemon": "^3.1.4",
     "prisma": "^6.15.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.0"
+  "typescript": "^5.5.0",
+  "cross-env": "^7.0.3"
   }
 }
