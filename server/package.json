@@ -1,45 +1,49 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "description": "This app uses SQLite via Prisma ORM. The core entities are StudyGroup, Student, and GroupStudent (join table).",
+  "description": "ParentHub backend API using Express, Prisma ORM, and PostgreSQL (via Neon in cloud).",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon --watch . --ext ts --exec ts-node --project ../tsconfig.server.json index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+
     "seed": "ts-node prisma/seed.ts",
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",
     "studio": "prisma studio",
-    "test": "echo \"Error: no test specified\" && exit 1",
+
     "check:storage": "node -e \"try{require.resolve('tsx')}catch(e){process.exit(1)}\" && npx tsx scripts/storage-sanity-check.ts || npx ts-node -P ../tsconfig.server.json scripts/storage-sanity-check.ts",
     "check:udk": "node -e \"try{require.resolve('tsx')}catch(e){process.exit(1)}\" && npx tsx scripts/storage-udk-check.ts || npx ts-node -P ../tsconfig.server.json scripts/storage-udk-check.ts",
     "backfill:group-folders": "npx ts-node -P ../tsconfig.server.json scripts/backfill-group-folders.ts",
+
     "seed:students": "ts-node --project ../tsconfig.server.json ./prisma/seed-students.ts",
     "seed:auth-users": "ts-node --transpile-only --project ../tsconfig.server.json ./prisma/seed-auth-users.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "@azure/identity": "^4.11.1",
+    "@azure/storage-blob": "^12.28.0",
+    "@prisma/client": "^6.15.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "morgan": "^1.10.1",
+    "multer": "^1.4.5-lts.1",
+    "zod": "^3.23.8"
+  },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",
-  "@types/node": "^20.11.30",
-    "morgan": "^1.10.1",
+    "@types/node": "^20.11.30",
     "nodemon": "^3.1.4",
     "prisma": "^6.15.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.0"
-  },
-  "dependencies": {
-    "@azure/identity": "^4.11.1",
-    "@azure/storage-blob": "^12.28.0",
-    "@prisma/client": "^6.15.0",
-  "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.19.2",
-  "multer": "^1.4.5-lts.1",
-  "zod": "^3.23.8"
   }
 }

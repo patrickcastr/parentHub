@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/lib/useSession';
-import logo from '../../assets/Green-School_Brand_Green.webp';
+
 
 export function AppNav() {
   const { data } = useSession();
