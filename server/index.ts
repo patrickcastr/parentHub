@@ -1,7 +1,7 @@
 import { app } from './app';
 import { initStorage } from './storage/azure-blob';
 import http from 'http';
-
+ 
 // Default to 5180 locally; Cloud Run / other hosts will supply PORT.
 const port = Number(process.env.PORT ?? 5180);
 app.listen(port, '0.0.0.0', async () => {
@@ -9,7 +9,7 @@ app.listen(port, '0.0.0.0', async () => {
 	try {
 		await initStorage();
 		console.log('[storage] init complete');
-	} catch (e:any) {
+	} catch (e:any) { 
 		console.error('[storage] init failed', e?.message || e);
 	}
 	setTimeout(() => {
