@@ -20,4 +20,5 @@ node_modules/
 server/.env
 server/*.env
 
-*.swp
+*.swp.env
+.env.*
