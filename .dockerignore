@@ -1,0 +1,11 @@
+node_modules
+web/node_modules
+web/dist
+.git
+.github
+*.env
+*.local
+server
+infra
+tests
+scripts
