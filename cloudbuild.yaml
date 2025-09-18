@@ -3,6 +3,9 @@ substitutions:
   _WEB_SVC: parenthub-web
   _API_SVC: parenthub-api
   _TAG: v1-$BUILD_ID
+  _AZURE_CLIENT_ID: "52ea052d-6dc9-4ead-bd6c-866acd522227"
+  _AZURE_TENANT_ID: "6710fdee-7f27-4a98-9c77-b290f13a24c1"
+  _AZURE_CLIENT_SECRET_SECRET: "PARENTHUB_AZURE_CLIENT_SECRET"
 
 steps:
 # 1) Build & push API
@@ -32,6 +35,18 @@ steps:
       echo -n "$API_URL" > api_url.txt
       echo "API_URL=$API_URL"
 
+# 3b) Update API service with Entra ID env + secret
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      API_URL=$(cat api_url.txt)
+      gcloud run services update "$_API_SVC" \
+        --region="$_REGION" --platform=managed \
+        --set-env-vars=AZURE_CLIENT_ID=${_AZURE_CLIENT_ID},AZURE_TENANT_ID=${_AZURE_TENANT_ID},AZURE_REDIRECT_URI="${API_URL}/api/auth/azure/callback" \
+        --set-secrets=AZURE_CLIENT_SECRET=${_AZURE_CLIENT_SECRET_SECRET}:latest
+
 # 4) Build & push Web with the real API URL baked in
 - name: gcr.io/cloud-builders/docker
   entrypoint: bash
@@ -41,6 +56,8 @@ steps:
       API_URL=$(cat api_url.txt)
       docker build -f Dockerfile.web \
         --build-arg VITE_API_BASE_URL="$API_URL" \
+        --build-arg VITE_MSAL_CLIENT_ID="$_AZURE_CLIENT_ID" \
+        --build-arg VITE_MSAL_TENANT_ID="$_AZURE_TENANT_ID" \
         -t gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG) .
 - name: gcr.io/cloud-builders/docker
   args: ['push','gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)']
