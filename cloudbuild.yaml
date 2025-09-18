@@ -1,0 +1,58 @@
+substitutions:
+  _REGION: australia-southeast1
+  _WEB_SVC: parenthub-web
+  _API_SVC: parenthub-api
+  _TAG: v1-$BUILD_ID
+
+steps:
+# 1) Build & push API
+- name: gcr.io/cloud-builders/docker
+  args: ['build','-f','server/Dockerfile','-t','gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)','server']
+- name: gcr.io/cloud-builders/docker
+  args: ['push','gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)']
+
+# 2) Deploy API (so we know its real URL)
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  args:
+    ['run','deploy','$(_API_SVC)',
+     '--image=gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)',
+     '--platform=managed','--region=$(_REGION)','--allow-unauthenticated',
+     '--port=5180','--cpu=1','--memory=512Mi','--concurrency=80','--min-instances=0','--max-instances=3'
+     # add env/secrets here if you use them, e.g.:
+     # '--set-secrets=DATABASE_URL=projects/$PROJECT_ID/secrets/PARENTHUB_DB_URL:latest'
+    ]
+
+# 3) Read API URL for the frontend build
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      API_URL=$(gcloud run services describe "$_API_SVC" --region="$_REGION" --format='value(status.url)')
+      echo -n "$API_URL" > api_url.txt
+      echo "API_URL=$API_URL"
+
+# 4) Build & push Web with the real API URL baked in
+- name: gcr.io/cloud-builders/docker
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      API_URL=$(cat api_url.txt)
+      docker build -f Dockerfile.web \
+        --build-arg VITE_API_BASE_URL="$API_URL" \
+        -t gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG) .
+- name: gcr.io/cloud-builders/docker
+  args: ['push','gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)']
+
+# 5) Deploy Web
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  args:
+    ['run','deploy','$(_WEB_SVC)',
+     '--image=gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)',
+     '--platform=managed','--region=$(_REGION)','--allow-unauthenticated',
+     '--port=8080','--cpu=1','--memory=256Mi','--concurrency=150','--min-instances=0','--max-instances=3']
+
+images:
+- gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)
+- gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)
