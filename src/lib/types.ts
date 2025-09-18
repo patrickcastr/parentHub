@@ -34,3 +34,35 @@ export type FileDTO = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type StudyGroup = {
+  id: string;
+  name: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  memberCount?: number;
+  fileCount?: number;
+};
+
+export type GroupRow = {
+  id: string;
+  name: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  members?: number;
+  files?: number;
+  createdAt?: string | null;
+  memberCount?: number;
+  fileCount?: number;
+};
+
+export interface CohortEntity {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+export interface CohortMember {
+  id: string;
+  groupId: string;
+  [key: string]: unknown;
+}

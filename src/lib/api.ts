@@ -1,7 +1,8 @@
+export * from './api/groups';
 import { Group, StudentDTO, Paginated } from './types';
 import { msalInstance, loginRequest } from '@/auth/msal';
 
-const API_BASE = '/api';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 
 async function json<T>(res: Response): Promise<T> { if (!res.ok) throw new Error(await res.text()); return res.json(); }
 
@@ -13,8 +14,12 @@ export type GroupRow = {
   startDate: string | null;
   endDate: string | null;
   createdAt?: string | null;
-  // Keep legacy for compatibility where existing code may still reference startsOn
+  // Legacy alias
   startsOn?: string | null;
+  members?: number;
+  files?: number;
+  memberCount?: number;
+  fileCount?: number;
 };
 export async function listGroups(params: ListGroupsParams = {}) {
   const q = new URLSearchParams({
@@ -22,7 +27,7 @@ export async function listGroups(params: ListGroupsParams = {}) {
     limit: String(params.limit ?? 10),
     search: (params.search ?? '').trim(),
   });
-  const res = await fetch(`/api/groups?${q.toString()}`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/groups?${q.toString()}`, { credentials: 'include' });
   if (!res.ok) throw new Error(`listGroups failed: ${res.status}`);
   const data = await res.json();
   // Normalize items to have startDate/endDate
@@ -33,6 +38,10 @@ export async function listGroups(params: ListGroupsParams = {}) {
     endDate: g.endDate ?? null,
     createdAt: g.createdAt ?? null,
     startsOn: g.startsOn ?? g.startDate ?? null,
+    members: g.members ?? g.memberCount ?? undefined,
+    files: g.files ?? g.fileCount ?? undefined,
+    memberCount: g.memberCount,
+    fileCount: g.fileCount,
   }));
   return { ...data, items } as { items: GroupRow[]; page: number; limit: number; total: number; pages?: number };
 }

@@ -89,18 +89,16 @@ export default function Groups() {
 							</tr>
 						</thead>
 						<tbody>
-							{data.items.map((g) => (
+							{data.items.map((g: any) => (
 								<tr key={g.id} className="hover:bg-gray-50">
 									<td className="p-2 border font-medium">{g.name}</td>
-									<td className="p-2 border">{g.members}</td>
-									<td className="p-2 border">{g.files}</td>
+										<td className="p-2 border">{g.members ?? '—'}</td>
+										<td className="p-2 border">{g.files ?? '—'}</td>
 									<td className="p-2 border">
-										{g.startsOn
-											? new Date(g.startsOn).toLocaleDateString()
-											: '—'}
+										{g.startsOn ? (()=>{ const d = new Date(g.startsOn!); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(); })() : '—'}
 									</td>
 									<td className="p-2 border">
-										{new Date(g.createdAt).toLocaleDateString()}
+										{g.createdAt ? (()=>{ const d=new Date(g.createdAt); return isNaN(d.getTime())?'—': d.toLocaleDateString(); })() : '—'}
 									</td>
 									<td className="p-2 border">
 										<button

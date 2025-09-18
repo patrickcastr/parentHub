@@ -39,7 +39,7 @@ export async function deleteEntity(
   await client.deleteEntity(partitionKey, rowKey);
 }
 
-export async function queryEntities<T extends Record<string, unknown>>(table: string, filter: string): Promise<T[]> {
+export async function queryEntities<T extends { [k: string]: any }>(table: string, filter: string): Promise<T[]> {
   const client = getTableClient(table);
   const entities: T[] = [];
   for await (const entity of client.listEntities<T>({ queryOptions: { filter } })) {

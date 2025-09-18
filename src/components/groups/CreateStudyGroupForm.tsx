@@ -38,16 +38,16 @@ export function CreateStudyGroupForm() {
       <form onSubmit={handleSubmit((data) => mutation.mutate(data))}>
         <div className="mb-4">
           <label className="block mb-1">Group Name</label>
-          <Input {...register("groupName")} disabled={isSubmitting} />
-          {errors.groupName && (
-            <span className="text-red-500 text-xs">{errors.groupName.message}</span>
+          <Input {...register("name")} disabled={isSubmitting} />
+          {errors.name && (
+            <span className="text-red-500 text-xs">{errors.name.message}</span>
           )}
         </div>
         <div className="mb-4">
-          <label className="block mb-1">End Date</label>
-          <Input type="date" {...register("endDate")} disabled={isSubmitting} />
-          {errors.endDate && (
-            <span className="text-red-500 text-xs">{errors.endDate.message}</span>
+          <label className="block mb-1">Starts On</label>
+          <Input type="date" {...register("startsOn")} disabled={isSubmitting} />
+          {errors.startsOn && (
+            <span className="text-red-500 text-xs">{errors.startsOn.message}</span>
           )}
         </div>
         <Button type="submit" disabled={isSubmitting}>
