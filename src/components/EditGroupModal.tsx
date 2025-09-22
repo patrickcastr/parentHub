@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { updateGroup } from '@/lib/api/groups';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -28,9 +29,7 @@ export default function EditGroupModal({ open, onOpenChange, group, onSaved }: E
       setError('');
       if(!group || !open){ return; }
       try {
-        const res = await fetch(`/api/groups/${group.id}`, { credentials: 'include' });
-        if(!res.ok) throw new Error(`load failed (${res.status})`);
-        const g = await res.json();
+        const g = await apiFetch(`/api/groups/${group.id}`);
         if(cancelled) return;
         setName(g.name || '');
         setStart(toInputDate(g.startDate ?? g.startsOn ?? null));

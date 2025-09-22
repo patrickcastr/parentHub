@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api';
 // ------------------------------------------------------------
 // types.ts — frontend API client for group file operations
 // ------------------------------------------------------------
@@ -50,10 +51,8 @@ export async function listGroupFiles(params: {
     ...(search ? { search } : {}),
   });
 
-  const r = await fetch(`/api/groups/${groupId}/files?` + qs.toString(), { credentials: 'include' });
-  if (!r.ok) throw new Error("Failed to fetch files");
-
-  return r.json() as Promise<{
+  const r = await apiFetch(`/api/groups/${groupId}/files?` + qs.toString());
+  return r as Promise<{
     items: FileItem[];
     page: number;
     limit: number;
@@ -84,10 +83,8 @@ export async function initUpload(
   body: { filename: string; mimeType?: string; sizeBytes?: number }
 ) {
   console.debug('[files:initUpload] request', { groupId, filename: body.filename, mimeType: body.mimeType, size: body.sizeBytes });
-  const r = await fetch(`/api/groups/${groupId}/files/upload-url`, {
+  const r = await apiFetch(`/api/groups/${groupId}/files/upload-url`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: 'include',
     body: JSON.stringify({
       filename: sanitizeFilename(body.filename), // ✅ safe name only
       mimeType: body.mimeType,
@@ -105,7 +102,7 @@ export async function initUpload(
     throw new Error(msg);
   }
 
-  const data = await r.json();
+  const data = r as any;
   console.debug('[files:initUpload] success', data);
   return data;
 }
@@ -126,12 +123,7 @@ export async function completeUpload(args: {
   sizeBytes?: number;
 }) {
   console.debug('[files:completeUpload] request', args);
-  const r = await fetch(`/api/files/complete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: 'include',
-    body: JSON.stringify(args),
-  });
+  const r = await apiFetch(`/api/files/complete`, { method: "POST", body: JSON.stringify(args) });
 
   if (!r.ok) {
     let msg = "completeUpload failed";
@@ -143,7 +135,7 @@ export async function completeUpload(args: {
     throw new Error(msg);
   }
 
-  const data = await r.json();
+  const data = r as any;
   console.debug('[files:completeUpload] success', data);
   return data;
 }
@@ -163,35 +155,20 @@ export type GroupBlobItem = {
 export async function listGroupFilesStorage(groupId: string, cursor?: string, limit = 20) {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (cursor) qs.set('cursor', cursor);
-  const r = await fetch(`/api/groups/${groupId}/files/list?${qs.toString()}`, { credentials: 'include' });
-  if (!r.ok) {
-    let msg = 'list files failed';
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
-    throw new Error(msg);
-  }
-  return r.json() as Promise<{ items: GroupBlobItem[]; nextCursor: string | null }>;  
+  const r = await apiFetch(`/api/groups/${groupId}/files/list?${qs.toString()}`);
+  return r as Promise<{ items: GroupBlobItem[]; nextCursor: string | null }>;  
 }
 
 export async function readFileUrl(groupId: string, key: string) {
   const qs = new URLSearchParams({ key });
-  const r = await fetch(`/api/groups/${groupId}/files/read-url?${qs.toString()}`, { credentials: 'include' });
-  if (!r.ok) {
-    let msg = 'read url failed';
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
-    throw new Error(msg);
-  }
-  return r.json() as Promise<{ url: string }>;  
+  const r = await apiFetch(`/api/groups/${groupId}/files/read-url?${qs.toString()}`);
+  return r as Promise<{ url: string }>;  
 }
 
 export async function deleteFile(groupId: string, key: string) {
   const qs = new URLSearchParams({ key });
-  const r = await fetch(`/api/groups/${groupId}/files?${qs.toString()}`, { method: 'DELETE', credentials: 'include' });
-  if (!r.ok) {
-    let msg = 'delete failed';
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
-    throw new Error(msg);
-  }
-  return r.json() as Promise<{ ok: boolean }>;  
+  const r = await apiFetch(`/api/groups/${groupId}/files?${qs.toString()}`, { method: 'DELETE' });
+  return r as Promise<{ ok: boolean }>;  
 }
 
 /** Get a download URL for a given file ID. */
@@ -201,12 +178,10 @@ export function downloadUrl(fileId: string) {
 
 /** Archive a file (soft delete / hidden from normal list). */
 export async function archiveFile(id: string) {
-  const r = await fetch(`/api/files/${id}/archive`, { method: "PATCH", credentials: 'include' });
-  if (!r.ok) throw new Error("archive failed");
+  await apiFetch(`/api/files/${id}/archive`, { method: "PATCH" });
 }
 
 /** Permanently delete a file (irreversible). */
 export async function purgeFile(id: string) {
-  const r = await fetch(`/api/files/${id}/purge`, { method: "DELETE", credentials: 'include' });
-  if (!r.ok) throw new Error("purge failed");
+  await apiFetch(`/api/files/${id}/purge`, { method: "DELETE" });
 }

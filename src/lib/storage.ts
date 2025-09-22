@@ -1,19 +1,11 @@
+import { apiFetch } from '@/lib/api';
 // Minimal client helpers for SAS URL endpoints
 export async function getReadUrl(blob: string) {
-  const res = await fetch(`/api/storage/read-url/${encodeURIComponent(blob)}`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`read-url failed: ${res.status}`);
-  const data = await res.json();
+  const data = (await apiFetch(`/api/storage/read-url/${encodeURIComponent(blob)}`)) as any;
   return data.url as string;
 }
 
 export async function getUploadUrl(blob: string) {
-  const res = await fetch('/api/storage/upload-url', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ blob }),
-  });
-  if (!res.ok) throw new Error(`upload-url failed: ${res.status}`);
-  const data = await res.json();
+  const data = (await apiFetch('/api/storage/upload-url', { method: 'POST', body: JSON.stringify({ blob }) })) as any;
   return data.url as string;
 }

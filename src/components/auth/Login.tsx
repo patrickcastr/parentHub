@@ -2,6 +2,8 @@ import React from 'react';
 import AuthProviderButton from '@/components/auth/AuthProviderButton';
 import { AUTH_PROVIDERS } from '@/config/authProviders';
 import { loginWithEmailPassword, fetchMe } from '@/lib/api/auth';
+import { MSAL_ENABLED } from '@/auth/msal';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/state/authStore';
 
@@ -62,11 +64,10 @@ export default function Login(){
     let cancelled = false;
     (async()=>{
       try {
-        const r = await fetch('/api/auth/config', { credentials: 'include' });
-        const j = await r.json();
+  const j = (await apiFetch('/api/auth/config')) as any;
         if(!cancelled) setMsCfg(j);
       } catch {
-        if(!cancelled) setMsCfg({ msEnabled: false, loginUrl: '/api/auth/login/microsoft' });
+  if(!cancelled) setMsCfg({ msEnabled: false, loginUrl: '/api/auth/login/microsoft' });
       } finally { if(!cancelled) setMsLoading(false); }
     })();
     return ()=>{ cancelled = true; };
@@ -106,7 +107,7 @@ export default function Login(){
           <div className="flex-1 h-px bg-slate-200" />
         </div>
         <div className="space-y-3">
-          {AUTH_PROVIDERS.filter(p=> p.id==='microsoft').map(p=> (
+          {MSAL_ENABLED && AUTH_PROVIDERS.filter(p=> p.id==='microsoft').map(p=> (
             <AuthProviderButton
               key={p.id}
               provider={p}
@@ -114,7 +115,10 @@ export default function Login(){
               disabled={msLoading || !(msCfg?.msEnabled)}
             />
           ))}
-          {!msLoading && msCfg && !msCfg.msEnabled && (
+          {MSAL_ENABLED && !msLoading && msCfg && !msCfg.msEnabled && (
+            <p className="text-xs text-red-600 text-center">Microsoft SSO isn’t configured on the server.</p>
+          )}
+          {!MSAL_ENABLED && (
             <p className="text-xs text-red-600 text-center">Microsoft SSO isn’t configured on the server.</p>
           )}
         </div>

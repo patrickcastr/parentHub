@@ -2,6 +2,24 @@ export * from './api/groups';
 import { Group, StudentDTO, Paginated } from './types';
 import { msalInstance, loginRequest } from '@/auth/msal';
 
+// Centralized API base + fetch helpers for production
+export const API = (import.meta as any).env?.VITE_API_BASE_URL as string;
+export async function apiFetch(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${API}${path}` as string, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
+    ...init,
+  });
+  if (!res.ok) {
+    try { throw new Error(await res.text()); } catch { throw new Error(res.statusText); }
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
+export function apiPost(path: string, body: unknown, init: RequestInit = {}) {
+  return apiFetch(path, { method: 'POST', body: JSON.stringify(body), ...init });
+}
+
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 
 async function json<T>(res: Response): Promise<T> { if (!res.ok) throw new Error(await res.text()); return res.json(); }

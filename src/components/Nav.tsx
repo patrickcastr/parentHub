@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 
 export default function Nav() {
   const [role, setRole] = useState<'TEACHER' | 'STUDENT' | null>(null);
@@ -27,7 +28,7 @@ export default function Nav() {
           <a
             href="#"
             onClick={() => {
-              fetch('/api/auth/signout').then(() => {
+              apiFetch('/api/auth/signout', { method: 'POST' }).then(() => {
                 localStorage.removeItem('role');
                 window.location.href = '/';
               });
@@ -43,7 +44,7 @@ export default function Nav() {
           <a
             href="#"
             onClick={() => {
-              fetch('/api/auth/signout').then(() => {
+              apiFetch('/api/auth/signout', { method: 'POST' }).then(() => {
                 localStorage.removeItem('role');
                 window.location.href = '/';
               });

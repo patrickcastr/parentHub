@@ -52,7 +52,7 @@ app.set('trust proxy', 1);
 }
 
 // CORS (strict allow-list) BEFORE any routes
-const CLIENT_ORIGIN = process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173';
+const CLIENT_ORIGIN = process.env.FRONTEND_ORIGIN || process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173';
 const extraOrigins = [CLIENT_ORIGIN, CLIENT_ORIGIN.replace('localhost', '127.0.0.1')];
 app.use(
   cors({
