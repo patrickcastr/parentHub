@@ -1,0 +1,64 @@
+substitutions:
+  _REGION: australia-southeast1
+  _SERVICE: parenthub-api-prod
+  _IMAGE: gcr.io/$PROJECT_ID/parenthub-api:$COMMIT_SHA
+
+timeout: "1800s"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/DATABASE_URL/versions/latest
+      env: DATABASE_URL
+    - versionName: projects/$PROJECT_ID/secrets/DIRECT_URL/versions/latest
+      env: DIRECT_URL
+
+steps:
+  - name: node:20
+    id: "build-and-migrate"
+    entrypoint: bash
+    secretEnv:
+      - DATABASE_URL
+      - DIRECT_URL
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        npm ci
+        npx prisma generate --schema server/prisma/schema.prisma
+        if [ -n "${DIRECT_URL:-}" ]; then
+          export DATABASE_URL="$$DIRECT_URL"
+        fi
+        npx prisma migrate deploy --schema server/prisma/schema.prisma
+        npm run build
+
+  - name: gcr.io/cloud-builders/docker
+    id: "docker-build"
+    args: ["build", "-f", "server/Dockerfile", "-t", "$_IMAGE", "."]
+
+  - name: gcr.io/cloud-builders/docker
+    id: "docker-push"
+    args: ["push", "$_IMAGE"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: "deploy-cloud-run"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_IMAGE
+      - --region=$_REGION
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-secrets=FRONTEND_ORIGIN=projects/$PROJECT_ID/secrets/FRONTEND_ORIGIN:latest
+      - --set-secrets=AUTH_ALLOWED_ORIGIN=projects/$PROJECT_ID/secrets/AUTH_ALLOWED_ORIGIN:latest
+      - --set-secrets=AUTH_REDIRECT_URI=projects/$PROJECT_ID/secrets/AUTH_REDIRECT_URI:latest
+      - --set-secrets=ENTRA_TENANT_ID=projects/$PROJECT_ID/secrets/ENTRA_TENANT_ID:latest
+      - --set-secrets=ENTRA_CLIENT_ID=projects/$PROJECT_ID/secrets/ENTRA_CLIENT_ID:latest
+      - --set-secrets=ENTRA_CLIENT_SECRET=projects/$PROJECT_ID/secrets/ENTRA_CLIENT_SECRET:latest
+      - --set-secrets=SESSION_SECRET=projects/$PROJECT_ID/secrets/SESSION_SECRET:latest
+      - --set-secrets=DATABASE_URL=projects/$PROJECT_ID/secrets/DATABASE_URL:latest
+      - --set-secrets=DIRECT_URL=projects/$PROJECT_ID/secrets/DIRECT_URL:latest
+
+images:
+  - $_IMAGE

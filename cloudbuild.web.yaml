@@ -1,0 +1,68 @@
+substitutions:
+  _REGION: australia-southeast1
+  _SERVICE: parenthub-web-prod
+  _IMAGE: gcr.io/$PROJECT_ID/parenthub-web:$COMMIT_SHA
+
+timeout: "1200s"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/VITE_API_BASE_URL/versions/latest
+      env: VITE_API_BASE_URL
+    - versionName: projects/$PROJECT_ID/secrets/VITE_MSAL_ENABLED/versions/latest
+      env: VITE_MSAL_ENABLED
+    - versionName: projects/$PROJECT_ID/secrets/VITE_MSAL_CLIENT_ID/versions/latest
+      env: VITE_MSAL_CLIENT_ID
+    - versionName: projects/$PROJECT_ID/secrets/VITE_MSAL_AUTHORITY/versions/latest
+      env: VITE_MSAL_AUTHORITY
+    - versionName: projects/$PROJECT_ID/secrets/VITE_MSAL_REDIRECT_URI/versions/latest
+      env: VITE_MSAL_REDIRECT_URI
+
+steps:
+  - name: node:20
+    id: "build-frontend"
+    entrypoint: bash
+    secretEnv:
+      - VITE_API_BASE_URL
+      - VITE_MSAL_ENABLED
+      - VITE_MSAL_CLIENT_ID
+      - VITE_MSAL_AUTHORITY
+      - VITE_MSAL_REDIRECT_URI
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        echo "Generating .env.production from Secret Manager…"
+        cat > .env.production <<EOF
+        VITE_API_BASE_URL=$$VITE_API_BASE_URL
+        VITE_MSAL_ENABLED=$$VITE_MSAL_ENABLED
+        VITE_MSAL_CLIENT_ID=$$VITE_MSAL_CLIENT_ID
+        VITE_MSAL_AUTHORITY=$$VITE_MSAL_AUTHORITY
+        VITE_MSAL_REDIRECT_URI=$$VITE_MSAL_REDIRECT_URI
+        EOF
+
+        npm ci
+        npm run build
+
+  - name: gcr.io/cloud-builders/docker
+    id: "docker-build"
+    args: ["build", "-f", "Dockerfile.web", "-t", "$_IMAGE", "."]
+
+  - name: gcr.io/cloud-builders/docker
+    id: "docker-push"
+    args: ["push", "$_IMAGE"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: "deploy-cloud-run"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_IMAGE
+      - --region=$_REGION
+      - --platform=managed
+      - --allow-unauthenticated
+
+images:
+  - $_IMAGE
