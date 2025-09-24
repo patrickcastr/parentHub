@@ -1,34 +1,23 @@
 # ---- build ----
 FROM node:20-alpine AS build
 WORKDIR /app
-
-# Install deps first for better layer cache
 COPY package*.json ./
 RUN npm ci
-
-# Copy the rest of the app (includes index.html, public/, tailwind/postcss, .env.production)
 COPY . .
-
-# Optional build-time vars (also supports .env.production from build context)
-ARG VITE_API_BASE_URL
-ARG VITE_MSAL_CLIENT_ID
-ARG VITE_MSAL_TENANT_ID
-ARG VITE_MSAL_AUTHORITY
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ENV VITE_MSAL_CLIENT_ID=$VITE_MSAL_CLIENT_ID
-ENV VITE_MSAL_TENANT_ID=$VITE_MSAL_TENANT_ID
-ENV VITE_MSAL_AUTHORITY=$VITE_MSAL_AUTHORITY
-
-# Build
-RUN npm run build
+ARG VITE_API_BASE_URL VITE_MSAL_CLIENT_ID VITE_MSAL_TENANT_ID VITE_MSAL_AUTHORITY
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
+    VITE_MSAL_CLIENT_ID=$VITE_MSAL_CLIENT_ID \
+    VITE_MSAL_TENANT_ID=$VITE_MSAL_TENANT_ID \
+    VITE_MSAL_AUTHORITY=$VITE_MSAL_AUTHORITY
+RUN npm run build  # produces /app/dist
 
 # ---- serve ----
-FROM nginx:alpine
-
-# Nginx config with SPA fallback on 8080
+FROM nginx:1.25-alpine
+# make Nginx listen on 8080 with SPA fallback
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
-
-# Static site
+# validate nginx config at build time (will fail the build if broken)
+RUN nginx -t
+# copy built site
 COPY --from=build /app/dist /usr/share/nginx/html
-
 EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]
