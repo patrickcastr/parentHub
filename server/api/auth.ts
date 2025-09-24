@@ -48,24 +48,24 @@ function msEnvStatus() {
   const client   = process.env.AZURE_CLIENT_ID ?? '';
   const secret   = process.env.AZURE_CLIENT_SECRET ?? '';
   const redirect = process.env.AZURE_REDIRECT_URI ?? '';
-  const mask = (v: string) => (v ? `${v.slice(0,6)}…${v.slice(-4)}` : '');
+
   const msEnabledFlag = (process.env.AUTH_MS_ENABLED ?? '1') !== '0';
-  const hasTenant = !!tenant;
-  const hasClient = !!client;
-  const hasSecret = !!secret;
+  const hasTenant   = !!tenant;
+  const hasClient   = !!client;
+  const hasSecret   = !!secret;
   const hasRedirect = !!redirect;
-  const allPresent = msEnabledFlag && hasTenant && hasClient && hasSecret && hasRedirect;
-  return {
+  const allPresent  = msEnabledFlag && hasTenant && hasClient && hasSecret && hasRedirect;
+
+  const mask = (v: string) => (v ? `${v.slice(0, 6)}…${v.slice(-4)}` : '');
+  const verbose = process.env.AUTH_DIAG_SHOW_RAW === '1' && process.env.NODE_ENV !== 'production';
+
+  const base: any = {
     msEnabledFlag,
     hasTenant,
     hasClient,
     hasSecret,
     hasRedirect,
     allPresent,
-  tenant,
-  client,
-  secret,
-  redirect,
     preview: {
       tenant: mask(tenant),
       client: mask(client),
@@ -74,6 +74,16 @@ function msEnvStatus() {
     },
     nodeEnv: process.env.NODE_ENV || 'development',
   };
+
+  if (verbose) {
+    base.raw = {
+      tenant,
+      client,
+      // never expose the secret in raw
+      redirect,
+    };
+  }
+  return base;
 }
 
 router.post('/login', async (req, res) => {
@@ -153,24 +163,26 @@ router.get('/config', (_req, res) => {
   res.json({ msEnabled: st.allPresent, loginUrl: '/api/auth/login/microsoft' });
 });
 
-// TEMP diagnostic: which envs does the API see?
+// Dev diagnostic route (redacted by default)
 router.get('/config/_diag', (_req, res) => {
   res.json(msEnvStatus());
 });
 
 // GET /api/auth/login/microsoft
 // Uses same env validation as /api/auth/config; returns 500 with stable error when incomplete.
-router.get('/login/microsoft', (req, res) => {
-  const st = msEnvStatus();
-  if (!st.allPresent) return res.status(500).json({ error: 'sso_config_missing' });
-  // Non-PKCE confidential client authorization request (no code_challenge)
-  const auth = new URL(`https://login.microsoftonline.com/${st.tenant}/oauth2/v2.0/authorize`);
-  auth.searchParams.set('client_id', st.client);
+router.get('/login/microsoft', (_req, res) => {
+  const tenant = process.env.AZURE_TENANT_ID || '';
+  const client = process.env.AZURE_CLIENT_ID || '';
+  const redirect = process.env.AZURE_REDIRECT_URI || '';
+  const msEnabledFlag = (process.env.AUTH_MS_ENABLED ?? '1') !== '0';
+  const allPresent = msEnabledFlag && !!tenant && !!client && !!redirect && !!(process.env.AZURE_CLIENT_SECRET || '');
+  if (!allPresent) return res.status(500).json({ error: 'sso_config_missing' });
+  const auth = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`);
+  auth.searchParams.set('client_id', client);
   auth.searchParams.set('response_type', 'code');
   auth.searchParams.set('response_mode', 'query');
-  auth.searchParams.set('redirect_uri', st.redirect);
+  auth.searchParams.set('redirect_uri', redirect);
   auth.searchParams.set('scope', 'openid profile email offline_access');
-  // Optional state (not enforced in callback for now)
   const state = crypto.randomBytes(8).toString('hex');
   auth.searchParams.set('state', state);
   console.log('[SSO] start (no PKCE) ->', auth.toString());
