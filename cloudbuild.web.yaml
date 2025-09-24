@@ -19,6 +19,7 @@ availableSecrets:
       env: VITE_MSAL_REDIRECT_URI
 
 steps:
+  # 1) Build-time envs for Vite using Secret Manager
   - name: node:20
     id: "build-frontend"
     entrypoint: bash
@@ -40,18 +41,18 @@ steps:
         VITE_MSAL_AUTHORITY=$$VITE_MSAL_AUTHORITY
         VITE_MSAL_REDIRECT_URI=$$VITE_MSAL_REDIRECT_URI
         EOF
-
         npm ci
         npm run build
 
+  # 2) Build & push frontend image
   - name: gcr.io/cloud-builders/docker
     id: "docker-build"
     args: ["build", "-f", "Dockerfile.web", "-t", "$_IMAGE", "."]
-
   - name: gcr.io/cloud-builders/docker
     id: "docker-push"
     args: ["push", "$_IMAGE"]
 
+  # 3) Deploy to Cloud Run (no secrets needed at runtime)
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: "deploy-cloud-run"
     entrypoint: gcloud
