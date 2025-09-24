@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listGroups, createGroup, deleteGroup, GroupRow } from '@/lib/api';
+import { listGroups, createGroup, deleteGroup, GroupRow, API } from '@/lib/api';
 import EditGroupModal, { GroupLike } from '@/components/EditGroupModal';
 import GroupFilesModal from '@/components/GroupFilesModal';
 import UploadFileModal from '@/components/UploadFileModal';
@@ -33,11 +33,11 @@ export function GroupsPanel(){
         name: name.trim(),
         startsOn: startDate ? new Date(startDate).toISOString() : null,
       };
-      const url = '/api/groups';
+  const url = `${API}/api/groups`;
       console.group('Create Group');
       try {
         console.log('Request →', { url, body });
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
         console.log('Response status →', `${res.status} ${res.statusText}`);
         let json: any = null;
         try { json = await res.json(); console.log('Response body →', json); } catch (err) { console.warn('Response parse error →', (err as any)?.message || err); }

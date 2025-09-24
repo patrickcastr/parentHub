@@ -1,4 +1,5 @@
 import type { AuthProvider } from '@/config/authProviders';
+import { API } from '@/lib/api';
 
 type Props = { provider: AuthProvider; overridePath?: string; disabled?: boolean };
 export default function AuthProviderButton({ provider, overridePath, disabled }: Props) {
@@ -7,8 +8,8 @@ export default function AuthProviderButton({ provider, overridePath, disabled }:
     if (disabled) return;
     const next = new URLSearchParams(window.location.search).get('next');
     const path = overridePath || redirectPath;
-    const base = path.startsWith('http') ? path : path; // use relative; rely on proxy / same-origin
-    window.location.assign(base + (next ? `?next=${encodeURIComponent(next)}` : ''));
+    const href = path.startsWith('http') ? path : (path.startsWith('/api') ? `${API}${path}` : path);
+    window.location.assign(href + (next ? `?next=${encodeURIComponent(next)}` : ''));
   };
   return (
     <button

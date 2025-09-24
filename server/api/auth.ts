@@ -25,7 +25,7 @@ function issueSession(res: any, user: { id: string; email: string; role: 'STUDEN
   const sid = 's_' + user.id + '_' + crypto.randomBytes(6).toString('hex');
   SESS.set(sid, { id: user.id, email: user.email, role: normalizeRole(user.role) });
   const isProd = process.env.NODE_ENV === 'production';
-  const opts: any = { httpOnly: true, sameSite: 'lax', secure: isProd, path: '/' };
+  const opts: any = { httpOnly: true, sameSite: isProd ? 'none' : 'lax', secure: isProd, path: '/' };
   if (remember) {
     const days = typeof remember === 'number' ? remember : 30;
     opts.maxAge = days * 24 * 60 * 60 * 1000;
@@ -104,7 +104,7 @@ router.post('/login', async (req, res) => {
         const maxAgeSec = remember ? 30 * 24 * 3600 : 3600; // 30d vs 1h
         res.cookie('ph.sid', 'dev-session', {
           httpOnly: true,
-          sameSite: 'lax',
+          sameSite: isProd ? 'none' : 'lax',
           secure: isProd,
           maxAge: maxAgeSec * 1000
         });
@@ -119,7 +119,7 @@ router.post('/login', async (req, res) => {
           const maxAgeSec = remember ? 30 * 24 * 3600 : 3600;
           res.cookie('ph.sid', 'dev-session', {
             httpOnly: true,
-            sameSite: 'lax',
+            sameSite: isProd ? 'none' : 'lax',
             secure: isProd,
             maxAge: maxAgeSec * 1000
           });
@@ -151,9 +151,18 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  const sid = (req.cookies && req.cookies['ph.sid']) || '';
+  const sid = req.cookies?.['ph.sid'];
   if (sid) { try { SESS.delete(sid); } catch {/* ignore */} }
-  res.clearCookie('ph.sid', { path: '/' });
+  const isProd = process.env.NODE_ENV === 'production';
+  const opts = {
+    path: '/',
+    httpOnly: true,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    secure: isProd,
+  };
+  // Clear via both methods to satisfy all browsers
+  res.clearCookie('ph.sid', opts as any);
+  res.cookie('ph.sid', '', { ...(opts as any), maxAge: 0 });
   return res.json({ success: true });
 });
 
