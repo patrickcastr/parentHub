@@ -19,6 +19,7 @@ interface GroupRef { id: string; name: string; }
 
 export function GroupStudentsTable({ groupId, students, groups }: { groupId: string; students: StudentLite[]; groups: GroupRef[]; }) {
   const qc = useQueryClient();
+  const safeStudents = Array.isArray(students) ? students : [];
 
   const mut = useMutation({
     mutationFn: ({ studentId, nextGroupId }: { studentId: string; nextGroupId: string | null }) => assignStudentGroup(studentId, nextGroupId),
@@ -68,7 +69,7 @@ export function GroupStudentsTable({ groupId, students, groups }: { groupId: str
     }
   });
 
-  if (!students.length) return <div>No students in this group.</div>;
+  if (!safeStudents.length) return <div>No students in this group.</div>;
   return (
     <Table>
       <thead>
@@ -82,7 +83,7 @@ export function GroupStudentsTable({ groupId, students, groups }: { groupId: str
         </tr>
       </thead>
       <tbody>
-        {students.map((student) => {
+  {safeStudents.map((student) => {
           const displayName = student.name || `${student.firstName||''} ${student.lastName||''}`.trim();
           return (
           <tr key={student.id}>

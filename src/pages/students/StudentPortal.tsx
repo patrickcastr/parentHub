@@ -27,8 +27,12 @@ export default function StudentPortal(){
       setLoading(true); setError(null);
       try {
         const data = await fetchStudentPortal();
-        if(!cancelled){ setGroup(data.group); setFiles(data.files); }
-      } catch (e:any){ if(!cancelled) setError(e.message || 'Failed to load'); }
+        const nextGroup = (data as any)?.group ?? null;
+        const nextFiles = Array.isArray((data as any)?.files) ? (data as any).files : [];
+        if(!cancelled){ setGroup(nextGroup); setFiles(nextFiles); }
+      } catch (e:any){
+        if(!cancelled) setError(e?.message || 'Failed to load');
+      }
       finally { if(!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -60,7 +64,7 @@ export default function StudentPortal(){
       <section className="border rounded-lg p-4 bg-white shadow-sm">
         <h2 className="text-lg font-medium mb-3">Files I Can Download</h2>
         {loading && <p className="text-sm text-slate-500">Loading files...</p>}
-        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+  {error && <p className="text-sm text-red-600" role="alert">{String(error).includes('401') ? 'Please sign in.' : error}</p>}
         {!loading && !error && files.length === 0 && <p className="text-sm text-slate-500">No files yet.</p>}
         {!loading && !error && files.length > 0 && (
           <div className="overflow-x-auto">
