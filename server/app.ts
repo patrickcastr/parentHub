@@ -125,7 +125,19 @@ app.get('/api/auth/debug', (req, res) => {
 app.use('/api', meRouter);
 
 // Simple session-based auth middleware (defense in depth for API)
+// Public allow-list so health and auth entry points can bypass session checks
+const PUBLIC_PATHS = new Set<string>([
+  '/api/health',
+  '/api/auth/login',
+  '/api/auth/callback',
+  '/api/auth/login/microsoft',
+  '/api/auth/azure/callback',
+  '/api/auth/config',
+  '/api/auth/config/_diag',
+]);
+
 function authRequired(req: any, res: any, next: any) {
+  if (PUBLIC_PATHS.has(req.path)) return next();
   const sid = req.cookies && req.cookies['ph.sid'];
   const store: Map<string, any> | undefined = (global as any).__SESS;
   if (!sid || !store || !store.get(sid)) return res.status(401).json({ error: 'Not authenticated' });
@@ -190,7 +202,13 @@ if (IS_PROD || !BYPASS_AUTH)
   });
 
 // simple public health endpoint (before protected routes)
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'parenthub-api',
+    revision: process.env.K_REVISION || 'local',
+  });
+});
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // generic error handler - surface zod/prisma messages as JSON
