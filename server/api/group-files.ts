@@ -5,6 +5,7 @@ import {
   initUpload,        // 🔐 creates write SAS for a single blob
   getDownloadUrl,   // 🔓 creates read SAS for a single blob
   deleteObject,     // 🗑️ deletes a blob by full key
+  storageDisabled,
 } from '../storage/azure-blob';
 import { assertPathInPrefix } from '../util/pathScope';
 
@@ -56,6 +57,7 @@ function splitBaseExt(name: string) {
 
 /** Does a blob exist at a full key? */
 async function blobExists(fullKey: string) {
+  if (storageDisabled || !containerClient) return false;
   const client = containerClient.getBlockBlobClient(fullKey);
   return await client.exists();
 }
@@ -91,6 +93,7 @@ r.get('/:id/files/list', async (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
   const cursor = (req.query.cursor as string | undefined) || undefined;
 
+  if (storageDisabled || !containerClient) return res.json({ items: [], nextCursor: null, disabled: true });
   const pager = containerClient
     .listBlobsFlat({ prefix: g.storagePrefix })
     .byPage({ maxPageSize: limit, continuationToken: cursor });
@@ -137,6 +140,7 @@ r.get('/:id/files/read-url', async (req, res) => {
   // Safety: ensure the resolved key is truly inside the allowed prefix
   const safeKey = assertPathInPrefix(fullKey, prefix);
 
+  if (storageDisabled) return res.status(400).json({ error: 'storage disabled' });
   const filename = safeKey.split('/').pop();
   const url = await getDownloadUrl(safeKey, { filename });
 
@@ -180,6 +184,7 @@ r.post('/:id/files/upload-url', async (req, res) =>
   if (!filename) return res.status(400).json({ error: 'invalid filename' });
 
   const keyPrefix = prefix + subdir;                 // "groups/<id>[/sub/]"
+  if (storageDisabled) return res.status(400).json({ error: 'storage disabled' });
   const finalName = await getUniqueFilename(keyPrefix, filename); // de-dupe
 
   const mimeType = (req.body?.mimeType as string | undefined) || undefined;
@@ -224,6 +229,7 @@ r.delete('/:id/files', async (req, res) => {
   const fullKey = raw.startsWith(prefix) ? raw : prefix + raw;
   const safeKey = assertPathInPrefix(fullKey, prefix);
 
+  if (storageDisabled) return res.status(400).json({ error: 'storage disabled' });
   await deleteObject(safeKey);
   res.json({ ok: true });
 });

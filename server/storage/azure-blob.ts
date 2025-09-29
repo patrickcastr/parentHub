@@ -12,20 +12,31 @@ import { randomUUID } from 'node:crypto';
 
 /* -------------------------- ENV + CLIENTS -------------------------- */
 
-const requireEnv = (k: string) => {
-  const v = process.env[k];
-  if (!v) throw new Error(`[storage] Missing env ${k}`);
-  return v;
-};
+// Allow storage layer to be disabled in local/dev environments when Azure env vars
+// are not present. This prevents the entire server from crashing on startup.
+// Export a flag so callers (or future code) can branch if needed.
+export const storageDisabled =
+  process.env.STORAGE_DISABLED === '1' ||
+  !process.env.AZURE_STORAGE_ACCOUNT ||
+  !process.env.AZURE_STORAGE_CONTAINER;
 
-const account = requireEnv('AZURE_STORAGE_ACCOUNT');
-const container = requireEnv('AZURE_STORAGE_CONTAINER');
+let account: string | undefined;
+let container: string | undefined;
+let service: BlobServiceClient | undefined;
+export let containerClient: ReturnType<BlobServiceClient['getContainerClient']> | undefined;
 
-const service = new BlobServiceClient(
-  `https://${account}.blob.core.windows.net`,
-  new DefaultAzureCredential()
-);
-export const containerClient = service.getContainerClient(container);
+if (storageDisabled) {
+  // eslint-disable-next-line no-console
+  console.warn('[storage] Disabled (missing env or STORAGE_DISABLED=1). File features unavailable.');
+} else {
+  account = process.env.AZURE_STORAGE_ACCOUNT as string;
+  container = process.env.AZURE_STORAGE_CONTAINER as string;
+  service = new BlobServiceClient(
+    `https://${account}.blob.core.windows.net`,
+    new DefaultAzureCredential()
+  );
+  containerClient = service.getContainerClient(container);
+}
 
 /* ------------------------------ UTILS ------------------------------ */
 
@@ -53,6 +64,11 @@ export function buildBlobKey(prefix: string, originalName?: string) {
 /* --------------------------- BOOTSTRAP ---------------------------- */
 
 export async function initStorage() {
+  if (storageDisabled) {
+    console.log('[storage] init skipped (disabled)');
+    return;
+  }
+  if (!containerClient) return;
   console.log('[storage] ensuring container', containerClient.containerName);
   await containerClient.createIfNotExists();
 }
@@ -71,8 +87,9 @@ export async function createFolderMarker(
   meta?: Record<string, string>,
   markerName: (typeof MARKER_BLOBS)[number] = MARKER_BLOBS[0] // "prefix_foldername"
 ) {
+  if (storageDisabled) throw new Error('storage disabled');
   const name = markerPath(prefix, markerName);
-  const block = containerClient.getBlockBlobClient(name);
+  const block = containerClient!.getBlockBlobClient(name);
   await block.upload('', 0, { metadata: meta });
 }
 
@@ -93,9 +110,10 @@ export async function ensureGroupFolder(prefix: string, extraMeta?: Record<strin
 }
 
 export async function listKeysByPrefix(prefix: string) {
+  if (storageDisabled) throw new Error('storage disabled');
   const out: string[] = [];
   const p = ensureSlash(prefix);
-  for await (const b of containerClient.listBlobsFlat({ prefix: p })) out.push(b.name);
+  for await (const b of containerClient!.listBlobsFlat({ prefix: p })) out.push(b.name);
   return out;
 }
 
@@ -113,19 +131,20 @@ export async function initUpload(opts: {
   const p = ensureSlash(keyPrefix);
   const key = `${p}${filename}`;
 
-  const blobClient = containerClient.getBlobClient(key);
+  if (storageDisabled) throw new Error('storage disabled');
+  const blobClient = containerClient!.getBlobClient(key);
 
   const now = new Date();
   const startsOn = new Date(now.getTime() - 60_000);
   const expiresOn = new Date(now.getTime() + expiresInSeconds * 1000);
 
-  const udk = await service.getUserDelegationKey(startsOn, expiresOn);
+  const udk = await service!.getUserDelegationKey(startsOn, expiresOn);
   const perms = BlobSASPermissions.parse('cw'); // create + write
 
   const sas = generateBlobSASQueryParameters(
-    { containerName: container, blobName: key, permissions: perms, startsOn, expiresOn },
+  { containerName: container!, blobName: key, permissions: perms, startsOn, expiresOn },
     udk,
-    account
+  account!
   ).toString();
 
   // Client MUST send these headers on the PUT
@@ -147,16 +166,17 @@ export async function getDownloadUrl(
   key: string,
   opts?: { filename?: string; mimeType?: string; expiresInSeconds?: number }
 ) {
-  const blobClient = containerClient.getBlobClient(key);
+  if (storageDisabled) throw new Error('storage disabled');
+  const blobClient = containerClient!.getBlobClient(key);
   const now = new Date();
   const startsOn = new Date(now.getTime() - 60_000);
   const expiresOn = new Date(now.getTime() + (opts?.expiresInSeconds ?? 300) * 1000);
-  const udk = await service.getUserDelegationKey(startsOn, expiresOn);
+  const udk = await service!.getUserDelegationKey(startsOn, expiresOn);
   const perms = BlobSASPermissions.parse('r');
 
   const sas = generateBlobSASQueryParameters(
     {
-      containerName: container,
+  containerName: container!,
       blobName: key,
       permissions: perms,
       startsOn,
@@ -165,7 +185,7 @@ export async function getDownloadUrl(
       contentType: opts?.mimeType,
     },
     udk,
-    account
+  account!
   ).toString();
 
   return `${blobClient.url}?${sas}`;
@@ -174,7 +194,8 @@ export async function getDownloadUrl(
 /* ----------------------------- DELETE ----------------------------- */
 
 export async function deleteObject(key: string) {
-  await containerClient
+  if (storageDisabled) throw new Error('storage disabled');
+  await containerClient!
     .deleteBlob(key, { deleteSnapshots: 'include' })
     .catch((e: any) => {
       if (e?.statusCode !== 404) throw e;
@@ -184,28 +205,30 @@ export async function deleteObject(key: string) {
 /* ------------------------------ MOVE ------------------------------ */
 
 async function getReadSasUrl(key: string, seconds = 300) {
-  const blobClient = containerClient.getBlobClient(key);
+  if (storageDisabled) throw new Error('storage disabled');
+  const blobClient = containerClient!.getBlobClient(key);
   const now = new Date();
   const startsOn = new Date(now.getTime() - 60_000);
   const expiresOn = new Date(now.getTime() + seconds * 1000);
-  const udk = await service.getUserDelegationKey(startsOn, expiresOn);
+  const udk = await service!.getUserDelegationKey(startsOn, expiresOn);
   const sas = generateBlobSASQueryParameters(
     {
-      containerName: container,
+  containerName: container!,
       blobName: key,
       permissions: BlobSASPermissions.parse('r'),
       startsOn,
       expiresOn,
     },
     udk,
-    account
+  account!
   ).toString();
   return `${blobClient.url}?${sas}`;
 }
 
 export async function moveObject(oldKey: string, newKey: string) {
+  if (storageDisabled) throw new Error('storage disabled');
   const srcWithSas = await getReadSasUrl(oldKey, 300);
-  const dst = containerClient.getBlockBlobClient(newKey);
+  const dst = containerClient!.getBlockBlobClient(newKey);
   const poller = await dst.beginCopyFromURL(srcWithSas);
   await poller.pollUntilDone();
   await deleteObject(oldKey);

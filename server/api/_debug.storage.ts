@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { containerClient } from '../storage/azure-blob';
+import { containerClient, storageDisabled } from '../storage/azure-blob';
 import { log } from '../logger';
 
 const r = Router();
 
 r.get('/_storage/health', async (_req, res) => {
+  if (storageDisabled || !containerClient) return res.json({ ok: false, disabled: true });
   try {
     const props = await containerClient.getProperties();
     log.info({ container: containerClient.containerName, lastModified: props.lastModified }, '[storage:health] OK');
@@ -16,6 +17,7 @@ r.get('/_storage/health', async (_req, res) => {
 });
 
 r.post('/_storage/marker', async (_req, res) => {
+  if (storageDisabled || !containerClient) return res.status(400).json({ ok: false, disabled: true });
   const prefix = `groups/debug-${Date.now()}/`;
   try {
     const block = containerClient.getBlockBlobClient(prefix + '_folder');

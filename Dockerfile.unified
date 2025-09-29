@@ -1,0 +1,46 @@
+#############################################
+# Unified API + Frontend Container
+# Builds React (Vite) + compiles server + serves via Express
+#############################################
+
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Install dependencies (cache layer)
+COPY package*.json ./
+RUN npm ci
+
+# Copy full workspace (filtered by .dockerignore)
+COPY . .
+
+# Build frontend & server + generate prisma client
+# Debug: assert server/tsconfig.json exists before compiling
+RUN test -f server/tsconfig.json || (echo 'server/tsconfig.json missing:' && ls -al server && exit 1)
+RUN npm run build:web \
+  && npx tsc -p server \
+  && npx prisma generate --schema server/prisma/schema.prisma
+
+#############################################
+# Runtime image
+#############################################
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=8080
+
+# Copy only manifests & install production deps
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+ # Copy build artifacts
+COPY --from=build /app/server/dist ./server/dist
+COPY --from=build /app/server/prisma ./server/prisma
+COPY --from=build /app/dist ./public
+
+# Generate Prisma client again to ensure binary matches final image env (fast if cached)
+RUN npx prisma generate --schema server/prisma/schema.prisma
+
+EXPOSE 8080
+
+# Migrate then start
+CMD ["sh","-c","if [ \"$SKIP_MIGRATIONS\" != \"1\" ]; then npx prisma migrate deploy --schema server/prisma/schema.prisma || echo '[migrate] failed (continuing)'; else echo '[migrate] skipped'; fi; node server/dist/app.js"]

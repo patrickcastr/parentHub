@@ -1,4 +1,4 @@
-import { containerClient, createFolderMarker } from '../storage/azure-blob';
+import { containerClient, createFolderMarker, storageDisabled } from '../storage/azure-blob';
 import { buildBlobKey } from '../storage/azure-blob';
 process.env.AZURE_STORAGE_ACCOUNT  ||= 'parenthubstorage';
 process.env.AZURE_STORAGE_CONTAINER ||= 'parenthub-dev';
@@ -7,6 +7,10 @@ async function main() {
     const account   = 'parenthubstorage';
     const container = 'parenthub-dev';
     console.log('[smoke] starting');
+    if (storageDisabled || !containerClient) {
+        console.log('[smoke] storage disabled - skipping');
+        return;
+    }
     console.log('[init] container:', containerClient.containerName);
     await containerClient.createIfNotExists();
     const gid = 'smoke-' + Math.random().toString(36).slice(2,8);

@@ -1,11 +1,22 @@
 node_modules
+npm-debug.log
+dist
+*.log
+.git
+.gitignore
+Dockerfile.web
+Dockerfile
+cloudbuild.split.yaml
+server/uploads
+server/prisma/dev.db
+coverage
+tests
+*.tsbuildinfo
 web/node_modules
 web/dist
-.git
 .github
 *.env
 *.local
-server
+# Removed 'server' exclusion so API code is included
 infra
-tests
 scripts

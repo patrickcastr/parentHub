@@ -20,6 +20,7 @@ import studentPortalRouter from './api/studentPortal';
 import { prisma } from './prisma/client';
 import { requireAuth } from './auth/jwt';
 import { URL } from 'url';
+import crypto from 'crypto';
 
 // import using require to avoid transient TS resolution issue; tolerate absence in test env
 let diag: any = (req: any, res: any, next: any) => next();
@@ -51,22 +52,18 @@ app.set('trust proxy', 1);
   /* eslint-enable no-console */
 }
 
-// CORS (strict allow-list) BEFORE any routes
-const CLIENT_ORIGIN = process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173';
-const extraOrigins = [CLIENT_ORIGIN, CLIENT_ORIGIN.replace('localhost', '127.0.0.1')];
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // non-browser / same-origin
-      if (extraOrigins.includes(origin)) return cb(null, true);
-      // Allow any Vite auto-bumped localhost:51xx port in dev
-      if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:51\d{2}$/.test(origin))
-        return cb(null, true);
-      return cb(new Error('CORS blocked'), false);
-    },
-    credentials: true,
-  })
-);
+// Simplified CORS: In unified deployment we serve frontend + API same-origin.
+// If an explicit CLIENT_APP_ORIGIN is provided (for dev), allow only that origin.
+// Otherwise omit CORS middleware (default same-origin policy).
+{
+  const origin = process.env.CLIENT_APP_ORIGIN;
+  if (origin) {
+    app.use(cors({ origin, credentials: true }));
+    console.log('[CORS] restrictive single origin enabled:', origin);
+  } else {
+    console.log('[CORS] no cross-origin configured (same-origin expected)');
+  }
+}
 
 app.use(express.json());
 app.use(cookieParser());
@@ -193,15 +190,48 @@ if (IS_PROD || !BYPASS_AUTH)
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// ---------------- Runtime App Config (public) -----------------
+// Frontend will fetch this at startup instead of baking API URL at build time.
+// Includes build / commit metadata when provided via env vars.
+app.get('/api/app-config', (_req, res) => {
+  const commit = process.env.COMMIT_SHA || process.env.GIT_COMMIT || '';
+  const buildId = process.env.BUILD_ID || process.env.CLOUD_BUILD_ID || '';
+  const apiBaseUrl = process.env.PUBLIC_API_BASE_URL || '';
+  const msEnabled = (process.env.AUTH_MS_ENABLED ?? '1') !== '0';
+  res.json({
+    apiBaseUrl: apiBaseUrl || undefined, // frontend falls back to same-origin if absent
+    features: { msal: msEnabled },
+    build: {
+      commit: commit || undefined,
+      buildId: buildId || undefined,
+      generatedAt: new Date().toISOString(),
+      hash: crypto.createHash('sha1').update([commit, buildId].join(':')).digest('hex').slice(0,12),
+    },
+  });
+});
+
+// ---------------- Static Frontend + SPA Fallback ----------------
+// Public folder produced by Vite build copied to /app/public inside container.
+const webRoot = path.join(process.cwd(), 'public');
+// Serve hashed assets aggressively cached; index.html no-cache override handled by fallback.
+app.use(express.static(webRoot, { maxAge: '1h', index: false }));
+
+// SPA fallback (after API & uploads; before error handler)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+  // serve index.html if exists, else 404 pass-through
+  res.sendFile(path.join(webRoot, 'index.html'), (err) => {
+    if (err) next(err);
+  });
+});
+
 // generic error handler - surface zod/prisma messages as JSON
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use(
-  (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error(err);
-    const status = err?.status || 400;
-    res.status(status).json({ error: err?.message || 'Unexpected error' });
-  }
-);
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  const status = err?.status || 400;
+  res.status(status).json({ error: err?.message || 'Unexpected error' });
+});
 
 // -------------------------------
 // ✅ LISTEN HERE (fix for Cloud Run)

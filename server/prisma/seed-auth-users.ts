@@ -24,7 +24,7 @@ async function upsertBatch(emails: string[], role: 'STUDENT' | 'TEACHER', hash: 
 async function main(){
   const hash = await bcrypt.hash(DEFAULT_PASSWORD, ROUNDS);
   const students = await prisma.student.findMany({ select: { email: true }});
-  const studentEmails = students.map(s=> s.email).filter(Boolean) as string[];
+  const studentEmails = students.map((s: any)=> s.email).filter(Boolean) as string[];
   let teacherEmails: string[] = [];
   try {
     // Optional teacher table - ignore if absent

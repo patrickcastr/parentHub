@@ -2,7 +2,15 @@ export * from './api/groups';
 import { Group, StudentDTO, Paginated } from './types';
 import { msalInstance, loginRequest } from '@/auth/msal';
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
+// Runtime-configurable API base: loaded at app bootstrap.
+// Fallback order: loaded config -> legacy VITE_API_BASE_URL -> relative '/api'.
+let RUNTIME_API_BASE: string | null = null;
+export function setRuntimeApiBase(v: string | undefined) {
+  if (v) RUNTIME_API_BASE = v.replace(/\/$/, '');
+}
+function apiBase() {
+  return RUNTIME_API_BASE || (import.meta as any).env?.VITE_API_BASE_URL || '/api';
+}
 
 async function json<T>(res: Response): Promise<T> { if (!res.ok) throw new Error(await res.text()); return res.json(); }
 
@@ -27,7 +35,7 @@ export async function listGroups(params: ListGroupsParams = {}) {
     limit: String(params.limit ?? 10),
     search: (params.search ?? '').trim(),
   });
-  const res = await fetch(`${API_BASE}/groups?${q.toString()}`, { credentials: 'include' });
+  const res = await fetch(`${apiBase()}/groups?${q.toString()}`, { credentials: 'include' });
   if (!res.ok) throw new Error(`listGroups failed: ${res.status}`);
   const data = await res.json();
   // Normalize items to have startDate/endDate
@@ -46,19 +54,19 @@ export async function listGroups(params: ListGroupsParams = {}) {
   return { ...data, items } as { items: GroupRow[]; page: number; limit: number; total: number; pages?: number };
 }
 export async function createGroup(data: { name: string; startsOn?: string | null }) {
-  const res = await fetch(`${API_BASE}/groups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  const res = await fetch(`${apiBase()}/groups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
   return json<Group>(res);
 }
 export async function updateGroup(id: string, data: { name?: string; startsOn?: string | null; endsOn?: string | null }) {
-  const res = await fetch(`${API_BASE}/groups/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  const res = await fetch(`${apiBase()}/groups/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
   return json<Group>(res);
 }
 export async function deleteGroup(id: string) {
-  const res = await fetch(`${API_BASE}/groups/${id}`, { method: 'DELETE', credentials: 'include' });
+  const res = await fetch(`${apiBase()}/groups/${id}`, { method: 'DELETE', credentials: 'include' });
   return json<{ ok: boolean }>(res);
 }
 export async function getGroup(id: string) {
-  const res = await fetch(`${API_BASE}/groups/${id}`, { credentials: 'include' });
+  const res = await fetch(`${apiBase()}/groups/${id}`, { credentials: 'include' });
   if(!res.ok) throw new Error(`getGroup failed: ${res.status}`);
   const g = await res.json();
   return {
@@ -73,12 +81,12 @@ export async function getGroup(id: string) {
 export type InitUploadResponse = { uploadUrl: string; headers?: Record<string,string>; key: string; expiresAt: number };
 export async function initGroupFileUpload(groupId: string, file: File): Promise<InitUploadResponse> {
   const body = { filename: file.name, mimeType: file.type, sizeBytes: file.size };
-  const res = await fetch(`${API_BASE}/groups/${groupId}/files/init-upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+  const res = await fetch(`${apiBase()}/groups/${groupId}/files/init-upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
   if(!res.ok) throw new Error(`init-upload failed: ${res.status}`);
   return res.json();
 }
 export async function completeFileUpload(params: { groupId: string; key: string; filename: string; mimeType?: string; sizeBytes?: number; }) {
-  const res = await fetch(`${API_BASE}/files/complete`, { method: 'POST', headers: { 'Content-Type':'application/json' }, credentials: 'include', body: JSON.stringify(params) });
+  const res = await fetch(`${apiBase()}/files/complete`, { method: 'POST', headers: { 'Content-Type':'application/json' }, credentials: 'include', body: JSON.stringify(params) });
   if(!res.ok) throw new Error(`complete upload failed: ${res.status}`);
   return res.json();
 }
@@ -90,26 +98,26 @@ export async function listStudents(params: { search?: string; page?: number; lim
   if (params.groupId) q.set('groupId', params.groupId);
   if (params.page) q.set('page', String(params.page));
   if (params.limit) q.set('limit', String(params.limit));
-  const res = await fetch(`${API_BASE}/students?${q.toString()}`, { credentials: 'include' });
+  const res = await fetch(`${apiBase()}/students?${q.toString()}`, { credentials: 'include' });
   return json(res);
 }
 export async function createStudent(data: any) {
-  const res = await fetch(`${API_BASE}/students`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  const res = await fetch(`${apiBase()}/students`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
   return json(res);
 }
 export async function patchStudent(id: string, data: any) {
-  const res = await fetch(`${API_BASE}/students/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  const res = await fetch(`${apiBase()}/students/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
   return json(res);
 }
 export async function assignStudentGroup(id: string, groupId: string | null, override?: boolean) {
   const body: any = { groupId };
   if (override) body.override = true;
-  const res = await fetch(`${API_BASE}/students/${id}/assign-group`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+  const res = await fetch(`${apiBase()}/students/${id}/assign-group`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
   return json(res);
 }
 export async function importStudentsCsv(file: File) {
   const formData = new FormData(); formData.append('file', file);
-  const res = await fetch(`${API_BASE}/students/import-csv`, { method: 'POST', credentials: 'include', body: formData });
+  const res = await fetch(`${apiBase()}/students/import-csv`, { method: 'POST', credentials: 'include', body: formData });
   return json(res);
 }
 
@@ -128,15 +136,15 @@ async function authFetch(url:string, init: RequestInit = {}){
 }
 
 // Auth / Me (protected)
-export const getMe = () => authFetch(`${API_BASE}/me`).then(r=> json(r));
+export const getMe = () => authFetch(`${apiBase()}/me`).then(r=> json(r));
 
 // Files
 export const listGroupFiles = ({ groupId, search='', page=1, size=20 }: { groupId: string; search?: string; page?: number; size?: number; }) => {
   const q = new URLSearchParams({ search, page: String(page), size: String(size) });
-  return authFetch(`${API_BASE}/groups/${groupId}/files?${q.toString()}`).then(r=> json(r));
+  return authFetch(`${apiBase()}/groups/${groupId}/files?${q.toString()}`).then(r=> json(r));
 };
 export const uploadGroupFile = async ({ groupId, file }: { groupId: string; file: File; }) => {
   const fd = new FormData(); fd.append('file', file);
-  const res = await authFetch(`${API_BASE}/groups/${groupId}/files`, { method: 'POST', body: fd });
+  const res = await authFetch(`${apiBase()}/groups/${groupId}/files`, { method: 'POST', body: fd });
   return json(res);
 };

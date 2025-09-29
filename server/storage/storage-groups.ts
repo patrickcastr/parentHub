@@ -1,4 +1,4 @@
-import { containerClient } from './azure-blob';
+import { containerClient, storageDisabled } from './azure-blob';
 
 const ensureSlash = (p: string) => (p.endsWith('/') ? p : p + '/');
 
@@ -8,6 +8,7 @@ export const buildGroupPrefix = (id: string) => `groups/${id}/`;
 // Create/ensure the group "folder" by uploading a zero-byte marker blob
 export async function ensureGroupFolder(prefix: string, extraMeta?: Record<string,string>) {
   const name = `${ensureSlash(prefix)}_folder`; // consistent marker path
+  if (storageDisabled || !containerClient) throw new Error('storage disabled');
   const blob = containerClient.getBlockBlobClient(name);
 
   console.log('[provision] ensureGroupFolder', {

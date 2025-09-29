@@ -56,7 +56,7 @@ studentsRouter.get('/', async (req, res) => {
     prisma.student.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, include: { group: true } }),
     prisma.student.count({ where }),
   ]);
-  res.json({ items: items.map(s => ({
+  res.json({ items: items.map((s: any) => ({
     id: s.id,
     firstName: (s as any).firstName,
     lastName: (s as any).lastName,

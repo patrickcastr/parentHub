@@ -1,75 +1,79 @@
 substitutions:
   _REGION: australia-southeast1
-  _WEB_SVC: parenthub-web
-  _API_SVC: parenthub-api
+  _APP_SVC: parenthub-app
   _TAG: v1-$BUILD_ID
   _AZURE_CLIENT_ID: "52ea052d-6dc9-4ead-bd6c-866acd522227"
   _AZURE_TENANT_ID: "6710fdee-7f27-4a98-9c77-b290f13a24c1"
   _AZURE_CLIENT_SECRET_SECRET: "PARENTHUB_AZURE_CLIENT_SECRET"
+  # Storage account/container substitutions (set real values in your trigger or replace inline)
+  _AZURE_STORAGE_ACCOUNT: "REPLACE_STORAGE_ACCOUNT"
+  _AZURE_STORAGE_CONTAINER: "REPLACE_STORAGE_CONTAINER"
+  # Database & JWT secret names (Secret Manager). Ensure these exist.
+  _DB_URL_SECRET: "PARENTHUB_DB_URL"
+  # _JWT_SECRET_SECRET: "PARENTHUB_JWT_SECRET"   # Uncomment if JWT secret needed
 
 steps:
-# 1) Build & push API
-- name: gcr.io/cloud-builders/docker
-  args: ['build','-f','server/Dockerfile','-t','gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)','server']
-- name: gcr.io/cloud-builders/docker
-  args: ['push','gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)']
+  # 1) Install & type check / build checks (could be expanded with tests)
+  - name: gcr.io/cloud-builders/npm
+    entrypoint: bash
+    args: ['-c','npm ci && npx tsc -p server/tsconfig.json --noEmit && npm run build:web']
 
-# 2) Deploy API (so we know its real URL)
-- name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  args:
-    ['run','deploy','$(_API_SVC)',
-     '--image=gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)',
-     '--platform=managed','--region=$(_REGION)','--allow-unauthenticated',
-     '--port=5180','--cpu=1','--memory=512Mi','--concurrency=80','--min-instances=0','--max-instances=3'
-     # add env/secrets here if you use them, e.g.:
-     # '--set-secrets=DATABASE_URL=projects/$PROJECT_ID/secrets/PARENTHUB_DB_URL:latest'
-    ]
+  # 2) Build unified image
+  - name: gcr.io/cloud-builders/docker
+    args: ['build','-f','Dockerfile.unified','-t','gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG)','.' ]
 
-# 3) Read API URL for the frontend build
-- name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  entrypoint: bash
-  args:
-    - -c
-    - |
-      API_URL=$(gcloud run services describe "$_API_SVC" --region="$_REGION" --format='value(status.url)')
-      echo -n "$API_URL" > api_url.txt
-      echo "API_URL=$API_URL"
+  # 3) Smoke test container (health + root HTML)
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        # Skip migrations in this ephemeral smoke container (no DB secrets injected here)
+        docker run -d --rm -p 8080:8080 -e SKIP_MIGRATIONS=1 --name ph-smoke gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG)
+        for i in $(seq 1 30); do
+          sleep 1
+          if curl -fsS http://localhost:8080/health >/dev/null; then echo "[smoke] health ok"; break; fi
+          if [ "$i" = "30" ]; then echo "[smoke] FAILED (health never ready)"; docker logs ph-smoke || true; exit 1; fi
+        done
+        curl -fsS http://localhost:8080/ | grep -i '<!doctype' >/dev/null || (echo '[smoke] index.html missing' && exit 1)
+        docker stop ph-smoke
 
-# 3b) Update API service with Entra ID env + secret
-- name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  entrypoint: bash
-  args:
-    - -c
-    - |
-      API_URL=$(cat api_url.txt)
-      gcloud run services update "$_API_SVC" \
-        --region="$_REGION" --platform=managed \
-        --set-env-vars=AZURE_CLIENT_ID=${_AZURE_CLIENT_ID},AZURE_TENANT_ID=${_AZURE_TENANT_ID},AZURE_REDIRECT_URI="${API_URL}/api/auth/azure/callback" \
-        --set-secrets=AZURE_CLIENT_SECRET=${_AZURE_CLIENT_SECRET_SECRET}:latest
+  # 4) Push image
+  - name: gcr.io/cloud-builders/docker
+    args: ['push','gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG)']
 
-# 4) Build & push Web with the real API URL baked in
-- name: gcr.io/cloud-builders/docker
-  entrypoint: bash
-  args:
-    - -c
-    - |
-      API_URL=$(cat api_url.txt)
-      docker build -f Dockerfile.web \
-        --build-arg VITE_API_BASE_URL="$API_URL" \
-        --build-arg VITE_MSAL_CLIENT_ID="$_AZURE_CLIENT_ID" \
-        --build-arg VITE_MSAL_TENANT_ID="$_AZURE_TENANT_ID" \
-        -t gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG) .
-- name: gcr.io/cloud-builders/docker
-  args: ['push','gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)']
+  # 5) Deploy unified service
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    args:
+      - run
+      - deploy
+      - $(_APP_SVC)
+      - --image=gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG)
+      - --platform=managed
+      - --region=$(_REGION)
+      - --allow-unauthenticated
+      - --port=8080
+      - --cpu=1
+      - --memory=512Mi
+      - --concurrency=120
+      - --min-instances=0
+      - --max-instances=3
+      - --revision-suffix=rev-$BUILD_ID
+      - --set-env-vars=AZURE_CLIENT_ID=${_AZURE_CLIENT_ID},AZURE_TENANT_ID=${_AZURE_TENANT_ID},AZURE_STORAGE_ACCOUNT=${_AZURE_STORAGE_ACCOUNT},AZURE_STORAGE_CONTAINER=${_AZURE_STORAGE_CONTAINER},AUTH_MS_ENABLED=1,COMMIT_SHA=$COMMIT_SHA,BUILD_ID=$BUILD_ID
+      - --set-secrets=AZURE_CLIENT_SECRET=${_AZURE_CLIENT_SECRET_SECRET}:latest,DATABASE_URL=${_DB_URL_SECRET}:latest
+      # - --set-secrets=JWT_SECRET=${_JWT_SECRET_SECRET}:latest   # Uncomment when JWT secret is created
 
-# 5) Deploy Web
-- name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  args:
-    ['run','deploy','$(_WEB_SVC)',
-     '--image=gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)',
-     '--platform=managed','--region=$(_REGION)','--allow-unauthenticated',
-     '--port=8080','--cpu=1','--memory=256Mi','--concurrency=150','--min-instances=0','--max-instances=3']
+  # 6) Manifest artifact
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG))
+        printf '{"buildId":"%s","commitSha":"%s","image":"gcr.io/%s/%s:%s","digest":"%s","generatedAt":"%s"}\n' \
+          "$BUILD_ID" "$COMMIT_SHA" "$PROJECT_ID" "$(_APP_SVC)" "$(_TAG)" "$DIGEST" "$(date -u +%FT%TZ)" > manifest.json
+        cat manifest.json
 
 images:
-- gcr.io/$PROJECT_ID/$(_API_SVC):$(_TAG)
-- gcr.io/$PROJECT_ID/$(_WEB_SVC):$(_TAG)
+  - gcr.io/$PROJECT_ID/$(_APP_SVC):$(_TAG)

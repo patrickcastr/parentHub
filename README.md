@@ -5,8 +5,7 @@ Unified portal for teachers & students: study group management, secure file dist
 ## High-Level Architecture
 | Layer | Tech | Responsibility |
 |-------|------|----------------|
-| Frontend | React + Vite (TS) | UI, auth state, API calls with cookies |
-| Backend API | Express (TS) | Auth, groups, students, files, audit logging |
+| Frontend + API (Unified) | React (Vite) + Express (TS) | Single container: API under /api, static SPA + runtime config |
 | Database | PostgreSQL via Prisma | Core relational data |
 | Object Storage | Azure Blob | File objects (SAS signed) |
 | Email | SMTP | OTP + notifications |
@@ -34,7 +33,7 @@ Visit: http://localhost:5173/
 ## Deployment Matrix (Examples)
 | Concern | Dev / Simple | Hardened / Prod |
 |---------|--------------|-----------------|
-| API | Cloud Run / Fly.io | Azure Container Apps / AKS |
+| Unified App (API+Web) | Single Cloud Run service | Split later if scaling profiles diverge |
 | DB | Neon / Supabase | Azure Postgres Flexible Server |
 | Sessions | In-memory | Redis / Azure Cache |
 | OTP Store | In-memory | Table Storage / Redis |
@@ -135,3 +134,47 @@ Notes:
 * Nonce + state strict enforcement for SSO.
 * Fine-grained audit logging & retention policies.
 * Automate stale file purging & archival.
+
+## Deployment Environment & Secrets (Cloud Run / Cloud Build)
+
+Minimal recommended separation between Cloud Run environment variables and Secret Manager secrets:
+
+Secrets (managed in Secret Manager & injected with --set-secrets):
+```
+DATABASE_URL            # Postgres / Neon connection string
+AZURE_CLIENT_SECRET     # Microsoft Entra application client secret
+# JWT_SECRET            # (Create if/when JWT signing needed)
+```
+
+Plain environment variables (safe to appear in service config):
+```
+AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_STORAGE_ACCOUNT
+AZURE_STORAGE_CONTAINER
+AUTH_MS_ENABLED=1|0
+COMMIT_SHA (injected by Cloud Build)
+BUILD_ID   (injected by Cloud Build)
+AZURE_REDIRECT_URI (required when AUTH_MS_ENABLED=1)
+CLIENT_APP_ORIGIN (only if a separate origin is actually used)
+```
+
+Optional secret-izing of storage identifiers (not usually necessary):
+```
+PARENTHUB_AZURE_STORAGE_ACCOUNT
+PARENTHUB_AZURE_STORAGE_CONTAINER
+```
+
+### Cloud Build Deploy Snippet (Resulting Pattern)
+```
+gcloud run deploy parenthub-app \
+	--image=gcr.io/$PROJECT_ID/parenthub-app:$TAG \
+	--set-env-vars=AZURE_CLIENT_ID=...,AZURE_TENANT_ID=...,AZURE_STORAGE_ACCOUNT=...,AZURE_STORAGE_CONTAINER=...,AUTH_MS_ENABLED=1,COMMIT_SHA=$COMMIT_SHA,BUILD_ID=$BUILD_ID \
+	--set-secrets=AZURE_CLIENT_SECRET=PARENTHUB_AZURE_CLIENT_SECRET:latest,DATABASE_URL=PARENTHUB_DB_URL:latest \
+	--revision-suffix=rev-$BUILD_ID
+```
+
+Smoke test in Cloud Build uses `SKIP_MIGRATIONS=1` so it does not need database secrets just to verify static serving & health.
+
+### Why Not All Secrets?
+Account IDs, tenant IDs, and container names are identifiers, not credentials. Keeping only true secrets in Secret Manager reduces operational friction while preserving security. If policy requires centralizing everything, you can promote those env vars to secrets later without code changes.
