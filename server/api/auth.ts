@@ -62,10 +62,9 @@ function msEnvStatus() {
     hasSecret,
     hasRedirect,
     allPresent,
-  tenant,
-  client,
-  secret,
-  redirect,
+  // Intentionally omit raw secret (and other raw identifiers) from root output to avoid accidental disclosure.
+  // If deep debugging is ever required, introduce an explicit feature flag rather than reverting this.
+  redirect, // redirect kept since it is not sensitive and helps diagnose misconfiguration
     preview: {
       tenant: mask(tenant),
       client: mask(client),
@@ -152,7 +151,8 @@ router.get('/config', (_req, res) => {
   const st = msEnvStatus();
   res.json({
     msEnabled: st.allPresent,
-  loginUrl: '/api/auth/azure/callback',
+  // Expose the start-login endpoint (not the callback) so the frontend can initiate the flow
+  loginUrl: '/api/auth/azure/login',
     details: {
       msEnabledFlag: st.msEnabledFlag,
       hasTenant: st.hasTenant,
@@ -167,6 +167,27 @@ router.get('/config', (_req, res) => {
 // TEMP diagnostic: which envs does the API see?
 router.get('/config/_diag', (_req, res) => {
   res.json(msEnvStatus());
+});
+
+// Minimal Azure authorize initiation route. Redirects to Microsoft login to obtain an auth code.
+// (State/nonce omitted for now – can be added later for CSRF protection.)
+router.get('/azure/login', (req, res) => {
+  const tenant = process.env.AZURE_TENANT_ID;
+  const client = process.env.AZURE_CLIENT_ID;
+  const redirect = process.env.AZURE_REDIRECT_URI;
+  if (!tenant || !client || !redirect) {
+    return res.status(500).json({ error: 'sso_config_incomplete', missing: {
+      tenant: !tenant, client: !client, redirect: !redirect
+    }});
+  }
+  const scope = encodeURIComponent('openid profile email offline_access');
+  const authUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize` +
+    `?client_id=${encodeURIComponent(client)}` +
+    `&response_type=code` +
+    `&redirect_uri=${encodeURIComponent(redirect)}` +
+    `&response_mode=query` +
+    `&scope=${scope}`;
+  return res.redirect(authUrl);
 });
 
 

@@ -2,6 +2,14 @@ import { prisma } from './client';
 import bcrypt from 'bcryptjs';
 
 async function main(){
+  if(!process.env.DATABASE_URL){
+    console.error('[seed-initial-admin] ERROR: DATABASE_URL not set.\n' +
+      'Set it first, e.g. in PowerShell:\n' +
+      '  $env:DATABASE_URL = "postgresql://user:pass@host/db?sslmode=require"\n' +
+      'Or add it to server/.env then re-run: npm run generate && npm run seed:admin');
+    process.exit(1);
+  }
+
   const email = 'teacher@parenthub.com';
   const password = 'teacher';
   const rounds = Number(process.env.BCRYPT_SALT_ROUNDS || 12);
