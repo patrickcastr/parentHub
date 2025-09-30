@@ -295,15 +295,83 @@ router.get('/azure/callback', async (req, res) => {
     const email = String((claims.email || claims.preferred_username || '')).toLowerCase();
     const name = String(claims.name || email || 'User');
     if(!email) return res.status(401).json({ error: 'no_email_claim' });
-    // Determine canonical role (student present => student else teacher)
-    const student = await prisma.student.findUnique({ where: { email } }).catch(()=>null);
-    const canonical = student ? 'student' : 'teacher';
-    setCookieSession(res, { email, name, role: canonical }, 'ms');
-    return res.redirect(process.env.POST_LOGIN_REDIRECT || 'http://localhost:5173/');
+    // 1. Determine role from Azure app roles first (authoritative)
+    const claimRoles: string[] = Array.isArray(claims.roles) ? claims.roles : (Array.isArray(claims.wids) ? claims.wids : []);
+    const mapped = claimRoles.map(r => String(r).toLowerCase());
+    let decidedRole: 'student' | 'teacher' | null = null;
+    if (mapped.includes('teacher')) decidedRole = 'teacher';
+    else if (mapped.includes('student')) decidedRole = 'student';
+
+    // 2. Fallback if no roles claim: prefer least privilege (student) but log for auditing
+    if (!decidedRole) {
+      console.warn('[AUTH][SSO] No Azure app role claim present for user, defaulting to student (least privilege). email=', email);
+      decidedRole = 'student';
+    }
+
+    // 3. Auto-provision student record if needed and role is student
+    if (decidedRole === 'student') {
+      try {
+        await ensureStudentProvision(email, name);
+      } catch (e:any) {
+        console.error('[AUTH][SSO] ensureStudentProvision failed', e);
+        // Still allow session; provisioning failure should not leak internal errors to user
+      }
+    }
+
+    setCookieSession(res, { email, name, role: decidedRole }, 'ms');
+    return res.redirect(process.env.POST_LOGIN_REDIRECT || process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173/');
   } catch (e:any){
     console.error('[AUTH] callback error', e);
     return res.status(500).json({ error: 'callback_error' });
   }
 });
+
+// --- Helpers for SSO student provisioning ---
+async function ensureStudentProvision(email: string, displayName: string){
+  // Quick existence check
+  const existing = await prisma.student.findUnique({ where: { email } }).catch(()=>null);
+  if (existing) return existing;
+
+  const { firstName, lastName } = splitName(displayName, email);
+  const username = await generateUniqueUsername(email);
+  const rounds = Number(process.env.BCRYPT_SALT_ROUNDS || 12);
+  const randomSecret = crypto.randomBytes(32).toString('hex');
+  const passwordHash = await bcrypt.hash(randomSecret, rounds);
+  const created = await prisma.student.create({
+    data: {
+      email,
+      firstName,
+      lastName,
+      username,
+      passwordHash,
+    }
+  });
+  console.log('[AUTH][SSO] provisioned new student', { email, username });
+  return created;
+}
+
+function splitName(name: string, email: string){
+  const trimmed = (name || '').trim();
+  if(!trimmed){
+    const local = email.split('@')[0];
+    return { firstName: local, lastName: '' };
+  }
+  const parts = trimmed.split(/\s+/);
+  if(parts.length === 1) return { firstName: parts[0], lastName: '' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+async function generateUniqueUsername(email: string){
+  const baseRaw = email.split('@')[0].toLowerCase();
+  const base = baseRaw.replace(/[^a-z0-9_-]/g,'').slice(0,30) || 'user';
+  let attempt = base;
+  let counter = 0;
+  while (true){
+    const existing = await prisma.student.findUnique({ where: { username: attempt } }).catch(()=>null);
+    if(!existing) return attempt;
+    counter += 1;
+    attempt = (base + counter).slice(0,30);
+  }
+}
 
 export default router;
