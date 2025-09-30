@@ -6,8 +6,8 @@ substitutions:
   _AZURE_TENANT_ID: "6710fdee-7f27-4a98-9c77-b290f13a24c1"
   _AZURE_CLIENT_SECRET_SECRET: "PARENTHUB_AZURE_CLIENT_SECRET"
   # Storage account/container substitutions (set real values in your trigger or replace inline)
-  _AZURE_STORAGE_ACCOUNT: "REPLACE_STORAGE_ACCOUNT"
-  _AZURE_STORAGE_CONTAINER: "REPLACE_STORAGE_CONTAINER"
+  _AZURE_STORAGE_ACCOUNT: "parenthubstorage"
+  _AZURE_STORAGE_CONTAINER: "parenthub"
   # Database & JWT secret names (Secret Manager). Ensure these exist.
   _DB_URL_SECRET: "PARENTHUB_DB_URL"
   # _JWT_SECRET_SECRET: "PARENTHUB_JWT_SECRET"   # Uncomment if JWT secret needed
