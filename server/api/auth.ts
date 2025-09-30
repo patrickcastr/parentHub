@@ -147,10 +147,21 @@ router.post('/logout', (req, res) => {
   return res.json({ success: true });
 });
 
-// Dev diagnostic route for SSO config (redacted)
+// Diagnostic route for SSO config
 router.get('/config', (_req, res) => {
   const st = msEnvStatus();
-  res.json({ msEnabled: st.allPresent, loginUrl: '/api/auth/login/microsoft' });
+  res.json({
+    msEnabled: st.allPresent,
+  loginUrl: '/api/auth/azure/callback',
+    details: {
+      msEnabledFlag: st.msEnabledFlag,
+      hasTenant: st.hasTenant,
+      hasClient: st.hasClient,
+      hasSecret: st.hasSecret,
+      hasRedirect: st.hasRedirect,
+      nodeEnv: st.nodeEnv,
+    }
+  });
 });
 
 // TEMP diagnostic: which envs does the API see?
@@ -158,24 +169,6 @@ router.get('/config/_diag', (_req, res) => {
   res.json(msEnvStatus());
 });
 
-// GET /api/auth/login/microsoft
-// Uses same env validation as /api/auth/config; returns 500 with stable error when incomplete.
-router.get('/login/microsoft', (req, res) => {
-  const st = msEnvStatus();
-  if (!st.allPresent) return res.status(500).json({ error: 'sso_config_missing' });
-  // Non-PKCE confidential client authorization request (no code_challenge)
-  const auth = new URL(`https://login.microsoftonline.com/${st.tenant}/oauth2/v2.0/authorize`);
-  auth.searchParams.set('client_id', st.client);
-  auth.searchParams.set('response_type', 'code');
-  auth.searchParams.set('response_mode', 'query');
-  auth.searchParams.set('redirect_uri', st.redirect);
-  auth.searchParams.set('scope', 'openid profile email offline_access');
-  // Optional state (not enforced in callback for now)
-  const state = crypto.randomBytes(8).toString('hex');
-  auth.searchParams.set('state', state);
-  console.log('[SSO] start (no PKCE) ->', auth.toString());
-  return res.redirect(auth.toString());
-});
 
 async function fetchToken(env: ReturnType<typeof requireSSOEnv>, code: string, codeVerifier?: string) {
   const body = new URLSearchParams();
@@ -229,44 +222,6 @@ async function resolveRole(env: any, email: string, idTokenClaims: any): Promise
   return 'STUDENT';
 }
 
-// GET /api/auth/callback/microsoft
-router.get('/callback/microsoft', async (req, res) => {
-  const env = requireSSOEnv();
-  if(!env) return res.redirect((process.env.CLIENT_APP_ORIGIN || 'http://localhost:5173') + '/login?error=sso_config');
-  const { code, state } = req.query as any;
-  if(!code || !state) return res.redirect((env.CLIENT_APP_ORIGIN) + '/login?error=missing_code');
-  const parsed = parseStateCookie(req.cookies['ph.ms.state'], env.AZURE_CLIENT_SECRET);
-  res.clearCookie('ph.ms.state', { path: '/' });
-  if(!parsed || parsed.state !== state) {
-    console.warn('[SSO] state mismatch');
-    return res.redirect(env.CLIENT_APP_ORIGIN + '/login?error=state');
-  }
-  try {
-    const codeVerifier: string | undefined = parsed.codeVerifier;
-    const tokenResp = await fetchToken(env, code, codeVerifier);
-    const idToken = tokenResp.id_token;
-    if(!idToken) throw new Error('missing_id_token');
-    const claims = decodeJwt(idToken);
-    const email = deriveEmail(claims);
-    if(!email) return res.redirect(env.CLIENT_APP_ORIGIN + '/login?error=no_email');
-    const role = await resolveRole(env, email.toLowerCase(), claims);
-    // Upsert user (basic profile)
-    const upserted = await prisma.user.upsert({
-      where: { email: email.toLowerCase() },
-      update: { role },
-      create: { email: email.toLowerCase(), role }
-    });
-    issueSession(res, { id: upserted.id, email: upserted.email, role }, true);
-    const pathDest = parsed.next || (role === 'TEACHER' ? '/teachers' : '/students');
-    const fullDest = env.CLIENT_APP_ORIGIN.replace(/\/$/, '') + pathDest;
-    console.log('[SSO] ok', { email: upserted.email, role, dest: fullDest });
-    return res.redirect(fullDest);
-  } catch (e:any){
-    console.error('[SSO] callback error', e);
-    const origin = (env && env.CLIENT_APP_ORIGIN) || 'http://localhost:5173';
-    return res.redirect(origin + '/login?error=sso_failed');
-  }
-});
 
 // Helper to create a session cookie for SSO (lowercase role per spec for SSO path only)
 function setCookieSession(res: any, payload: { email: string; name: string; role: string }, provider: string){
